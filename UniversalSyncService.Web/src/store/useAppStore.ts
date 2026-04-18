@@ -19,6 +19,7 @@ import {
   type PublicInterfaceProfile,
   type ServiceStatus,
 } from '../api.ts';
+import { translateForCurrentLocale } from '../i18n/translate.ts';
 
 interface AppState {
   // Auth & Connection
@@ -140,7 +141,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         isConnected: true,
       });
     } catch (error) {
-      set({ message: error instanceof Error ? error.message : '控制台状态获取失败。' });
+      set({ message: error instanceof Error ? error.message : translateForCurrentLocale('web.store.error.fetchConsoleStateFailed') });
       if (error instanceof ApiRequestError && error.status === 401) {
         set({ isConnected: false });
       }
@@ -152,7 +153,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   executePlanNow: async (planId) => {
     const { apiKey, canUseAnonymousApi, fetchConsoleState } = get();
     if (!apiKey && !canUseAnonymousApi) {
-      throw new Error('当前尚未连接控制台。');
+      throw new Error(translateForCurrentLocale('web.store.error.notConnected'));
     }
 
     const currentCredential = apiKey || '';
@@ -163,7 +164,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       await fetchConsoleState();
       return result;
     } catch (error) {
-      const message = error instanceof Error ? error.message : '执行同步计划失败。';
+      const message = error instanceof Error ? error.message : translateForCurrentLocale('web.store.error.executePlanFailed');
       set({ message });
       throw error;
     } finally {

@@ -1,3 +1,5 @@
+import { translateForCurrentLocale } from './i18n/translate.ts';
+
 export type ServiceStatus = {
   serviceName: string;
   startedAt: string;
@@ -180,7 +182,7 @@ async function requestJson<T>(path: string, apiKey: string, method = 'GET', body
       }
     }
 
-    throw new ApiRequestError(`请求失败：${response.status}`, response.status);
+    throw new ApiRequestError(translateForCurrentLocale('web.api.error.requestFailedWithStatus', { status: response.status }), response.status);
   }
 
   if (response.status === 204) {
@@ -198,7 +200,7 @@ async function requestJson<T>(path: string, apiKey: string, method = 'GET', body
 export async function getHealth(): Promise<{ status: string }> {
   const response = await fetch('/health');
   if (!response.ok) {
-    throw new Error(`健康检查失败：${response.status}`);
+    throw new Error(translateForCurrentLocale('web.api.error.healthCheckFailed', { status: response.status }));
   }
 
   return response.json() as Promise<{ status: string }>;
@@ -207,7 +209,7 @@ export async function getHealth(): Promise<{ status: string }> {
 export async function getPublicInterfaceProfile(): Promise<PublicInterfaceProfile> {
   const response = await fetch('/api/public/interface-profile');
   if (!response.ok) {
-    throw new Error(`接口配置获取失败：${response.status}`);
+    throw new Error(translateForCurrentLocale('web.api.error.interfaceProfileFailed', { status: response.status }));
   }
 
   return response.json() as Promise<PublicInterfaceProfile>;
