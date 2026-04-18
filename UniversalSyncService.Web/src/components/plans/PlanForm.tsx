@@ -1,6 +1,7 @@
 import type { CreateOrUpdatePlanRequest, NodeSummary } from '../../api.ts';
+import { useI18n } from '../../i18n/useI18n.ts';
 import { FormActions } from '../common/FormActions.tsx';
-import { canUseAbsolutePath, conflictResolutionDescriptions, conflictResolutionOptions, formatAbsolutePathValidationError, formatNodeLabel, formatResolvedPathDisplay, getEffectiveMasterNodeId, getNodeById, getPathRuleHint, getSelectableSlaveNodes, isAbsolutePlanPath, syncModeOptions, triggerTypeOptions } from './planPresentation.ts';
+import { canUseAbsolutePath, formatAbsolutePathValidationError, formatNodeLabel, formatResolvedPathDisplay, getConflictResolutionDescription, getConflictResolutionOptions, getEffectiveMasterNodeId, getNodeById, getPathRuleHint, getSelectableSlaveNodes, getSyncModeOptions, getTriggerTypeOptions, isAbsolutePlanPath } from './planPresentation.ts';
 
 export type PlanFormState = CreateOrUpdatePlanRequest & {
   id: string;
@@ -31,42 +32,46 @@ export function PlanForm({
   removeSlave,
   parseCommaSeparatedList,
 }: PlanFormProps) {
+  const { t } = useI18n();
   const effectiveMasterNodeId = getEffectiveMasterNodeId(formData.masterNodeId);
   const selectedMasterNode = getNodeById(nodes, effectiveMasterNodeId);
+  const triggerTypeOptions = getTriggerTypeOptions(t);
+  const syncModeOptions = getSyncModeOptions(t);
+  const conflictResolutionOptions = getConflictResolutionOptions(t);
 
   return (
     <form onSubmit={onSubmit} className="plan-form">
       <div className="form-group-grid">
         <label>
-          <span>计划 ID</span>
+          <span>{t('web.plans.form.planId')}</span>
           <input type="text" value={formData.id} disabled readOnly />
         </label>
         <label>
-          <span>计划名称</span>
+          <span>{t('web.plans.form.planName')}</span>
           <input type="text" value={formData.name} onChange={(event) => updateForm((current) => ({ ...current, name: event.target.value }))} required />
         </label>
         <label className="full-width">
-          <span>描述</span>
+          <span>{t('web.forms.label.description')}</span>
           <input type="text" value={formData.description} onChange={(event) => updateForm((current) => ({ ...current, description: event.target.value }))} />
         </label>
 
         <label>
-          <span>主节点</span>
+          <span>{t('web.plans.sourceNode')}</span>
           <select value={formData.masterNodeId === 'host-local' ? '' : formData.masterNodeId} onChange={(event) => updateForm((current) => ({ ...current, masterNodeId: event.target.value }))}>
-            <option value="">🖥️ 默认宿主节点 (host-local)</option>
+            <option value="">{t('web.plans.form.masterNodeDefaultOption')}</option>
             {nodes.filter((node) => !node.isImplicitHostNode).map((node) => (
-              <option key={node.id} value={node.id}>{formatNodeLabel(node, node.id)}</option>
+              <option key={node.id} value={node.id}>{formatNodeLabel(node, node.id, t)}</option>
             ))}
           </select>
         </label>
 
         <label>
-          <span>同步对象类型</span>
-          <input type="text" value={formData.syncItemType} onChange={(event) => updateForm((current) => ({ ...current, syncItemType: event.target.value }))} placeholder="例如 FileSystem" />
+          <span>{t('web.plans.form.syncItemType')}</span>
+          <input type="text" value={formData.syncItemType} onChange={(event) => updateForm((current) => ({ ...current, syncItemType: event.target.value }))} placeholder={t('web.plans.form.syncItemTypePlaceholder')} />
         </label>
 
         <label>
-          <span>触发方式</span>
+          <span>{t('web.plans.form.triggerType')}</span>
           <select value={formData.triggerType} onChange={(event) => updateForm((current) => ({ ...current, triggerType: event.target.value }))}>
             {triggerTypeOptions.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
@@ -75,64 +80,73 @@ export function PlanForm({
         </label>
 
         <label>
-          <span>间隔秒数</span>
+          <span>{t('web.plans.form.intervalSeconds')}</span>
           <input
             type="number"
             min="1"
             value={formData.intervalSeconds ?? ''}
             onChange={(event) => updateForm((current) => ({ ...current, intervalSeconds: event.target.value ? Number.parseInt(event.target.value, 10) : undefined }))}
-            placeholder="可选"
+            placeholder={t('web.forms.hint.optional')}
           />
         </label>
 
         <label className="full-width">
-          <span>Cron 表达式</span>
-          <input type="text" value={formData.cronExpression ?? ''} onChange={(event) => updateForm((current) => ({ ...current, cronExpression: event.target.value }))} placeholder="定时触发时可选" />
+          <span>{t('web.plans.form.cronExpression')}</span>
+          <input type="text" value={formData.cronExpression ?? ''} onChange={(event) => updateForm((current) => ({ ...current, cronExpression: event.target.value }))} placeholder={t('web.plans.form.cronPlaceholder')} />
         </label>
 
         <label className="checkbox-label">
           <input type="checkbox" checked={formData.isEnabled} onChange={(event) => updateForm((current) => ({ ...current, isEnabled: event.target.checked }))} />
-          <span>启用计划</span>
+          <span>{t('web.plans.form.enablePlan')}</span>
         </label>
 
         <label className="checkbox-label">
           <input type="checkbox" checked={formData.enableFileSystemWatcher} onChange={(event) => updateForm((current) => ({ ...current, enableFileSystemWatcher: event.target.checked }))} />
-          <span>启用文件监听</span>
+          <span>{t('web.plans.form.enableWatcher')}</span>
         </label>
       </div>
 
       <div className="plan-form-section-header">
-        <h3>从节点配置</h3>
-        <button type="button" onClick={addSlave}>+ 添加从节点</button>
+        <h3>{t('web.plans.form.slaveConfig')}</h3>
+        <button type="button" onClick={addSlave}>+ {t('web.plans.form.addSlave')}</button>
       </div>
 
       {formData.slaves.map((slave, index) => {
         const selectedSlaveNode = nodes.find((node) => node.id === slave.slaveNodeId);
         const showMasterAbsoluteWarning = isAbsolutePlanPath(slave.targetPath) && !canUseAbsolutePath(selectedMasterNode);
         const showSlaveAbsoluteWarning = isAbsolutePlanPath(slave.sourcePath) && !canUseAbsolutePath(selectedSlaveNode);
+        const slaveCardKey = [
+          slave.slaveNodeId,
+          slave.syncMode,
+          slave.sourcePath ?? '.',
+          slave.targetPath ?? '.',
+          slave.conflictResolutionStrategy ?? 'Manual',
+          (slave.filters ?? []).join('|'),
+          (slave.exclusions ?? []).join('|'),
+        ].join(':');
 
         return (
-          <div key={`${slave.slaveNodeId}-${index}`} className="slave-edit-card">
-            {showMasterAbsoluteWarning ? <div className="message-banner error inline-message">{formatAbsolutePathValidationError('主节点路径', selectedMasterNode)}</div> : null}
-            {showSlaveAbsoluteWarning ? <div className="message-banner error inline-message">{formatAbsolutePathValidationError('从节点路径', selectedSlaveNode)}</div> : null}
+          <div key={slaveCardKey} className="slave-edit-card">
+            {showMasterAbsoluteWarning ? <div className="message-banner error inline-message">{formatAbsolutePathValidationError('web.plans.masterNodePath', selectedMasterNode, t)}</div> : null}
+            {showSlaveAbsoluteWarning ? <div className="message-banner error inline-message">{formatAbsolutePathValidationError('web.plans.slaveNodePath', selectedSlaveNode, t)}</div> : null}
 
             <div className="slave-edit-header">
-              <h4>从节点 {index + 1}</h4>
-              <button type="button" className="danger-text" onClick={() => removeSlave(index)} disabled={formData.slaves.length === 1}>移除</button>
+              <h4>{t('web.plans.form.slaveIndexTitle', { index: index + 1 })}</h4>
+              <button type="button" className="danger-text" onClick={() => removeSlave(index)} disabled={formData.slaves.length === 1}>{t('web.plans.form.removeSlave')}</button>
             </div>
 
             <div className="form-group-grid">
               <label>
-                <span>目标节点</span>
+                <span>{t('web.plans.targetNode')}</span>
                 <select value={slave.slaveNodeId} onChange={(event) => updateSlave(index, (current) => ({ ...current, slaveNodeId: event.target.value }))}>
                   {getSelectableSlaveNodes(nodes).map((node) => (
-                    <option key={node.id} value={node.id}>{formatNodeLabel(node, node.id)}</option>
+                    <option key={node.id} value={node.id}>{formatNodeLabel(node, node.id, t)}</option>
                   ))}
                 </select>
               </label>
 
               <label>
-                <span>同步模式</span>
+                <span>{t('web.plans.form.syncMode')}</span>
                 <select value={slave.syncMode} onChange={(event) => updateSlave(index, (current) => ({ ...current, syncMode: event.target.value }))}>
                   {syncModeOptions.map((option) => (
                     <option key={option.value} value={option.value}>{option.label}</option>
@@ -142,59 +156,59 @@ export function PlanForm({
 
               <div className="path-row-group full-width">
                 <label className="path-label">
-                  <span>从节点路径</span>
+                  <span>{t('web.plans.slaveNodePath')}</span>
                   <div className="path-input-wrapper">
                     <span className="path-input-icon">{canUseAbsolutePath(selectedSlaveNode) ? '🔓' : '🔒'}</span>
                     <input type="text" value={slave.sourcePath ?? ''} onChange={(event) => updateSlave(index, (current) => ({ ...current, sourcePath: event.target.value }))} />
                   </div>
                   <small className={`field-hint ${canUseAbsolutePath(selectedSlaveNode) ? 'is-host-local' : ''}`}>
                     {canUseAbsolutePath(selectedSlaveNode) ? <span aria-hidden="true">💡</span> : null}
-                    <span>{getPathRuleHint(selectedSlaveNode)}</span>
+                    <span>{getPathRuleHint(selectedSlaveNode, t)}</span>
                   </small>
-                  <small className="field-path-preview">最终路径：{formatResolvedPathDisplay(selectedSlaveNode, slave.sourcePath)}</small>
+                  <small className="field-path-preview">{t('web.plans.path.finalPathLabel', { path: formatResolvedPathDisplay(selectedSlaveNode, slave.sourcePath, t) })}</small>
                 </label>
 
                 <label className="path-label">
-                  <span>主节点路径</span>
+                  <span>{t('web.plans.masterNodePath')}</span>
                   <div className="path-input-wrapper">
                     <span className="path-input-icon">{canUseAbsolutePath(selectedMasterNode) ? '🔓' : '🔒'}</span>
                     <input type="text" value={slave.targetPath ?? ''} onChange={(event) => updateSlave(index, (current) => ({ ...current, targetPath: event.target.value }))} />
                   </div>
                   <small className={`field-hint ${canUseAbsolutePath(selectedMasterNode) ? 'is-host-local' : ''}`}>
                     {canUseAbsolutePath(selectedMasterNode) ? <span aria-hidden="true">💡</span> : null}
-                    <span>{getPathRuleHint(selectedMasterNode)}</span>
+                    <span>{getPathRuleHint(selectedMasterNode, t)}</span>
                   </small>
-                  <small className="field-path-preview">最终路径：{formatResolvedPathDisplay(selectedMasterNode, slave.targetPath)}</small>
+                  <small className="field-path-preview">{t('web.plans.path.finalPathLabel', { path: formatResolvedPathDisplay(selectedMasterNode, slave.targetPath, t) })}</small>
                 </label>
               </div>
 
               <label className="full-width">
-                <span>包含过滤规则</span>
+                <span>{t('web.plans.form.includeFilters')}</span>
                 <input
                   type="text"
                   value={(slave.filters ?? []).join(', ')}
                   onChange={(event) => updateSlave(index, (current) => ({ ...current, filters: parseCommaSeparatedList(event.target.value) }))}
-                  placeholder="例如 *.md, assets/**"
+                  placeholder={t('web.plans.form.includeFiltersPlaceholder')}
                 />
               </label>
 
               <label className="full-width">
-                <span>排除规则</span>
+                <span>{t('web.plans.form.excludeFilters')}</span>
                 <input
                   type="text"
                   value={(slave.exclusions ?? []).join(', ')}
                   onChange={(event) => updateSlave(index, (current) => ({ ...current, exclusions: parseCommaSeparatedList(event.target.value) }))}
-                  placeholder="例如 .git/, *.tmp"
+                  placeholder={t('web.plans.form.excludeFiltersPlaceholder')}
                 />
               </label>
 
               <label className="checkbox-label full-width">
                 <input type="checkbox" checked={slave.enableDeletionProtection} onChange={(event) => updateSlave(index, (current) => ({ ...current, enableDeletionProtection: event.target.checked }))} />
-                <span>启用删除保护</span>
+                <span>{t('web.plans.form.enableDeletionProtection')}</span>
               </label>
 
               <label>
-                <span>冲突处理 <small className="mono">(双向修改策略)</small></span>
+                <span>{t('web.plans.form.conflictResolution')} <small className="mono">({t('web.plans.form.conflictResolutionSubLabel')})</small></span>
                 <div className="conflict-group-wrapper">
                   <select value={slave.conflictResolutionStrategy ?? 'Manual'} onChange={(event) => updateSlave(index, (current) => ({ ...current, conflictResolutionStrategy: event.target.value }))}>
                     {conflictResolutionOptions.map((option) => (
@@ -202,7 +216,7 @@ export function PlanForm({
                     ))}
                   </select>
                   <span>
-                    {conflictResolutionDescriptions[slave.conflictResolutionStrategy ?? 'Manual'] || '自动解决冲突的备选策略。'}
+                    {getConflictResolutionDescription(slave.conflictResolutionStrategy ?? 'Manual', t)}
                   </span>
                 </div>
               </label>
@@ -213,7 +227,8 @@ export function PlanForm({
 
       <FormActions
         submitting={submitting}
-        submitLabel="保存计划"
+        submitLabel={t('web.plans.form.savePlan')}
+        submittingLabel={t('web.forms.submitting')}
         onCancel={onCancel}
         submitDisabled={formData.slaves.length === 0}
       />

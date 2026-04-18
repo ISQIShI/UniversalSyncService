@@ -1,4 +1,5 @@
 import type { CreateOrUpdateNodeRequest } from '../../api.ts';
+import { useI18n } from '../../i18n/useI18n.ts';
 import { FormActions } from '../common/FormActions.tsx';
 import type { NodeFormState } from './nodePresentation.ts';
 import { parseKeyValueText, serializeKeyValueRecord } from './nodePresentation.ts';
@@ -29,24 +30,25 @@ export function toNodeRequestPayload(form: NodeFormState): CreateOrUpdateNodeReq
 }
 
 export function NodeForm({ formData, submitting, isEditing, onSubmit, onCancel, setFormData }: NodeFormProps) {
+  const { t } = useI18n();
   const normalizedNodeType = formData.nodeType.trim().toLowerCase();
   const isOneDriveNode = normalizedNodeType === 'onedrive';
-  const rootPathLabel = isOneDriveNode ? 'OneDrive 根目录' : '根路径';
-  const rootPathPlaceholder = isOneDriveNode ? '例如 /Apps/UniversalSyncService' : '例如 D:/Sync/NodeA';
+  const rootPathLabel = isOneDriveNode ? t('web.nodes.form.rootPathLabel.oneDrive') : t('web.nodes.form.rootPathLabel.default');
+  const rootPathPlaceholder = isOneDriveNode ? t('web.nodes.form.rootPathPlaceholder.oneDrive') : t('web.nodes.form.rootPathPlaceholder.default');
 
   return (
     <form className="plan-form" onSubmit={onSubmit}>
       <div className="form-group-grid">
         <label>
-          <span>节点 ID</span>
+          <span>{t('web.nodes.form.nodeId')}</span>
           <input type="text" value={formData.id} onChange={(event) => setFormData((current) => current ? { ...current, id: event.target.value } : current)} disabled={isEditing} />
         </label>
         <label>
-          <span>节点名称</span>
+          <span>{t('web.nodes.name')}</span>
           <input type="text" value={formData.name} onChange={(event) => setFormData((current) => current ? { ...current, name: event.target.value } : current)} />
         </label>
         <label>
-          <span>节点类型</span>
+          <span>{t('web.nodes.type')}</span>
           <input type="text" value={formData.nodeType} onChange={(event) => setFormData((current) => current ? { ...current, nodeType: event.target.value } : current)} disabled={isEditing} />
         </label>
         <label>
@@ -71,23 +73,23 @@ export function NodeForm({ formData, submitting, isEditing, onSubmit, onCancel, 
             })}
             placeholder={rootPathPlaceholder}
           />
-          {isOneDriveNode ? <small className="field-hint">OneDrive 根目录使用以 / 开头的远端绝对显示路径，例如 /Apps/UniversalSyncService；不能填写 D:/ 或 C:/ 这类本机绝对路径。</small> : null}
+          {isOneDriveNode ? <small className="field-hint">{t('web.nodes.form.oneDriveRootPathHint')}</small> : null}
         </label>
         <label className="checkbox-label">
           <input type="checkbox" checked={formData.isEnabled} onChange={(event) => setFormData((current) => current ? { ...current, isEnabled: event.target.checked } : current)} />
-          <span>启用节点</span>
+          <span>{t('web.nodes.form.enableNode')}</span>
         </label>
         <label className="full-width">
-          <span>连接设置（每行 key=value）</span>
+          <span>{t('web.nodes.form.connectionSettings')}</span>
           <textarea value={formData.connectionSettingsText} onChange={(event) => setFormData((current) => current ? { ...current, connectionSettingsText: event.target.value, rootPath: parseKeyValueText(event.target.value).RootPath ?? current.rootPath } : current)} rows={6} />
         </label>
         <label className="full-width">
-          <span>自定义选项（每行 key=value）</span>
+          <span>{t('web.nodes.form.customOptions')}</span>
           <textarea value={formData.customOptionsText} onChange={(event) => setFormData((current) => current ? { ...current, customOptionsText: event.target.value } : current)} rows={6} />
         </label>
       </div>
 
-      <FormActions submitting={submitting} submitLabel="保存节点" onCancel={onCancel} />
+      <FormActions submitting={submitting} submitLabel={t('web.nodes.form.saveNode')} submittingLabel={t('web.forms.submitting')} onCancel={onCancel} />
     </form>
   );
 }

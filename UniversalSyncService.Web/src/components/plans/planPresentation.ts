@@ -1,79 +1,122 @@
 import type { NodeSummary } from '../../api.ts';
+import { type I18nKey } from '../../i18n/types.ts';
+import { translateForCurrentLocale } from '../../i18n/translate.ts';
 
 export const HOST_LOCAL_NODE_ID = 'host-local';
 
-export const conflictResolutionOptions = [
-  { value: 'Manual', label: '手动处理' },
-  { value: 'KeepNewer', label: '保留最新' },
-  { value: 'KeepLocal', label: '保留主节点版本' },
-  { value: 'KeepRemote', label: '保留从节点版本' },
-] as const;
+type Translator = (key: I18nKey, params?: Record<string, string | number>) => string;
 
-export const conflictResolutionDescriptions: Record<string, string> = {
-  Manual: '系统遇到冲突时直接终止该文件的同步并报警，交由人工介入处理。',
-  KeepNewer: '比较两端文件的修改时间，自动保留时间戳较新的版本。',
-  KeepLocal: '当两端同时发生变更导致冲突时，无条件以主节点的文件内容为准。',
-  KeepRemote: '当两端同时发生变更导致冲突时，无条件以从节点的文件内容为准。',
+type OptionWithKey = {
+  value: string;
+  labelKey: I18nKey;
 };
 
-export const syncModeOptions = [
-  { value: 'Bidirectional', label: '双向同步' },
-  { value: 'Push', label: '主节点推送' },
-  { value: 'Pull', label: '主节点拉取' },
-  { value: 'PushAndDelete', label: '推送并删除' },
-  { value: 'PullAndDelete', label: '拉取并删除' },
+const defaultTranslator: Translator = (key, params) => translateForCurrentLocale(key, params);
+
+export const conflictResolutionOptionKeys: OptionWithKey[] = [
+  { value: 'Manual', labelKey: 'web.plans.conflict.manual' },
+  { value: 'KeepNewer', labelKey: 'web.plans.conflict.keepNewer' },
+  { value: 'KeepLocal', labelKey: 'web.plans.conflict.keepLocal' },
+  { value: 'KeepRemote', labelKey: 'web.plans.conflict.keepRemote' },
 ] as const;
 
-export const triggerTypeOptions = [
-  { value: 'Manual', label: '手动触发' },
-  { value: 'Scheduled', label: '定时触发' },
-  { value: 'Realtime', label: '实时触发' },
+export function getConflictResolutionOptions(t: Translator = defaultTranslator) {
+  return conflictResolutionOptionKeys.map((option) => ({
+    value: option.value,
+    label: t(option.labelKey),
+  }));
+}
+
+const conflictResolutionDescriptionKeys: Record<string, I18nKey> = {
+  Manual: 'web.plans.conflict.description.manual',
+  KeepNewer: 'web.plans.conflict.description.keepNewer',
+  KeepLocal: 'web.plans.conflict.description.keepLocal',
+  KeepRemote: 'web.plans.conflict.description.keepRemote',
+};
+
+export function getConflictResolutionDescription(strategy: string | undefined, t: Translator = defaultTranslator) {
+  if (!strategy) {
+    return t('web.plans.conflict.description.default');
+  }
+
+  const key = conflictResolutionDescriptionKeys[strategy] ?? 'web.plans.conflict.description.default';
+  return t(key);
+}
+
+export const syncModeOptionKeys: OptionWithKey[] = [
+  { value: 'Bidirectional', labelKey: 'web.plans.syncMode.bidirectional' },
+  { value: 'Push', labelKey: 'web.plans.syncMode.push' },
+  { value: 'Pull', labelKey: 'web.plans.syncMode.pull' },
+  { value: 'PushAndDelete', labelKey: 'web.plans.syncMode.pushAndDelete' },
+  { value: 'PullAndDelete', labelKey: 'web.plans.syncMode.pullAndDelete' },
 ] as const;
 
-export function formatNodeLabel(node: NodeSummary | undefined, fallbackId: string) {
+export function getSyncModeOptions(t: Translator = defaultTranslator) {
+  return syncModeOptionKeys.map((option) => ({
+    value: option.value,
+    label: t(option.labelKey),
+  }));
+}
+
+export const triggerTypeOptionKeys: OptionWithKey[] = [
+  { value: 'Manual', labelKey: 'web.plans.trigger.manual' },
+  { value: 'Scheduled', labelKey: 'web.plans.trigger.scheduled' },
+  { value: 'Realtime', labelKey: 'web.plans.trigger.realtime' },
+] as const;
+
+export function getTriggerTypeOptions(t: Translator = defaultTranslator) {
+  return triggerTypeOptionKeys.map((option) => ({
+    value: option.value,
+    label: t(option.labelKey),
+  }));
+}
+
+export function formatNodeLabel(node: NodeSummary | undefined, fallbackId: string, t: Translator = defaultTranslator) {
   if (!node) {
     return fallbackId;
   }
 
   if (node.isImplicitHostNode) {
-    return `🖥️ ${node.name} (host-local)`;
+    return t('web.plans.nodeLabel.hostDefault', { name: node.name });
   }
 
-  return `📦 ${node.name} (${node.id})`;
+  return t('web.plans.nodeLabel.normal', { name: node.name, id: node.id });
 }
 
-export function formatMasterNodeLabel(masterNodeId: string, nodes: NodeSummary[]) {
+export function formatMasterNodeLabel(masterNodeId: string, nodes: NodeSummary[], t: Translator = defaultTranslator) {
   const effectiveNodeId = getEffectiveMasterNodeId(masterNodeId);
   const node = nodes.find((item) => item.id === effectiveNodeId);
-  return formatNodeLabel(node, effectiveNodeId);
+  return formatNodeLabel(node, effectiveNodeId, t);
 }
 
-export function formatTriggerTypeLabel(triggerType: string) {
-  return triggerTypeOptions.find((option) => option.value === triggerType)?.label ?? triggerType;
+export function formatTriggerTypeLabel(triggerType: string, t: Translator = defaultTranslator) {
+  const key = triggerTypeOptionKeys.find((option) => option.value === triggerType)?.labelKey;
+  return key ? t(key) : triggerType;
 }
 
-export function formatSyncModeLabel(syncMode: string) {
-  return syncModeOptions.find((option) => option.value === syncMode)?.label ?? syncMode;
+export function formatSyncModeLabel(syncMode: string, t: Translator = defaultTranslator) {
+  const key = syncModeOptionKeys.find((option) => option.value === syncMode)?.labelKey;
+  return key ? t(key) : syncMode;
 }
 
-export function formatConflictResolutionStrategyLabel(strategy: string | undefined) {
+export function formatConflictResolutionStrategyLabel(strategy: string | undefined, t: Translator = defaultTranslator) {
   switch (strategy) {
     case 'KeepNewer':
-      return '保留最新';
+      return t('web.plans.conflict.keepNewer');
     case 'Manual':
     case undefined:
     case '':
-      return '手动处理';
+      return t('web.plans.conflict.manual');
     case 'KeepLocal':
-      return '保留主节点版本';
+      return t('web.plans.conflict.keepLocal');
     case 'KeepRemote':
-      return '保留从节点版本';
+      return t('web.plans.conflict.keepRemote');
     case 'KeepLarger':
-      return '保留较大文件';
+      return t('web.plans.conflict.keepLarger');
     case 'RenameBoth':
-      return '双方改名保留';
+      return t('web.plans.conflict.renameBoth');
     default:
-      return `未支持策略（${strategy}）`;
+      return t('web.plans.conflict.unsupported', { strategy });
   }
 }
 
@@ -95,16 +138,16 @@ export function canUseAbsolutePath(node: NodeSummary | undefined) {
   return Boolean(node?.isImplicitHostNode || node?.nodeType?.toLowerCase() === 'local');
 }
 
-export function getPathRuleHint(node: NodeSummary | undefined) {
+export function getPathRuleHint(node: NodeSummary | undefined, t: Translator = defaultTranslator) {
   if (node?.isImplicitHostNode) {
-    return '宿主默认主节点支持显式绝对路径，也可以继续使用相对于工作区的路径。';
+    return t('web.plans.pathRule.hostDefault');
   }
 
   if (node?.nodeType?.toLowerCase() === 'local') {
-    return '本地节点支持显式绝对路径，也支持相对于节点根路径的相对路径。';
+    return t('web.plans.pathRule.local');
   }
 
-  return '普通节点只支持相对于节点根路径的相对路径。';
+  return t('web.plans.pathRule.remote');
 }
 
 export function getEffectiveMasterNodeId(masterNodeId: string | undefined) {
@@ -116,9 +159,14 @@ export function getNodeById(nodes: NodeSummary[], nodeId: string | undefined) {
   return nodes.find((node) => node.id === effectiveNodeId);
 }
 
-export function formatAbsolutePathValidationError(pathLabel: string, node: NodeSummary | undefined) {
-  const nodeLabel = node?.isImplicitHostNode ? '🖥️ 宿主默认主节点 (host-local)' : (node?.name ? `📦 ${node.name}` : '📦 当前节点');
-  return `${pathLabel}使用了绝对路径，但 ${nodeLabel} 当前不是本地节点，因此不允许显式绝对路径。`;
+export function formatAbsolutePathValidationError(pathLabelKey: I18nKey, node: NodeSummary | undefined, t: Translator = defaultTranslator) {
+  const nodeLabel = node?.isImplicitHostNode
+    ? t('web.plans.nodeLabel.hostDefaultNoName')
+    : (node?.name ? t('web.plans.nodeLabel.boxedName', { name: node.name }) : t('web.plans.nodeLabel.currentNode'));
+  return t('web.plans.validation.absolutePathNotAllowed', {
+    pathLabel: t(pathLabelKey),
+    nodeLabel,
+  });
 }
 
 export function getSelectableSlaveNodes(nodes: NodeSummary[]) {
@@ -158,21 +206,21 @@ function joinDisplayPath(rootPath: string, scopedPath: string) {
   return `${normalizedRoot}/${normalizedPath}`;
 }
 
-export function getResolvedPathDisplay(node: NodeSummary | undefined, configuredPath: string | undefined) {
+export function getResolvedPathDisplay(node: NodeSummary | undefined, configuredPath: string | undefined, t: Translator = defaultTranslator) {
   const trimmed = configuredPath?.trim();
 
   if (!trimmed) {
-    return node?.rootPath ? normalizeDisplayPath(node.rootPath) : '节点根路径';
+    return node?.rootPath ? normalizeDisplayPath(node.rootPath) : t('web.plans.path.rootPathFallback');
   }
 
   if (isAbsolutePlanPath(trimmed)) {
     return canUseAbsolutePath(node)
       ? normalizeDisplayPath(trimmed)
-      : `无效绝对路径：${normalizeDisplayPath(trimmed)}`;
+      : t('web.plans.path.invalidAbsolute', { path: normalizeDisplayPath(trimmed) });
   }
 
   if (node?.isImplicitHostNode && !node.rootPath) {
-    return `工作区/${normalizeRelativeSegments(trimmed)}`;
+    return t('web.plans.path.workspaceResolved', { path: normalizeRelativeSegments(trimmed) });
   }
 
   return node?.rootPath
@@ -182,7 +230,10 @@ export function getResolvedPathDisplay(node: NodeSummary | undefined, configured
 
 export const formatResolvedPathDisplay = getResolvedPathDisplay;
 
-export function formatConfiguredAndResolvedPath(node: NodeSummary | undefined, configuredPath: string | undefined) {
+export function formatConfiguredAndResolvedPath(node: NodeSummary | undefined, configuredPath: string | undefined, t: Translator = defaultTranslator) {
   const configured = configuredPath?.trim() || '.';
-  return `${configured}（最终：${getResolvedPathDisplay(node, configuredPath)}）`;
+  return t('web.plans.path.configuredResolved', {
+    configured,
+    resolved: getResolvedPathDisplay(node, configuredPath, t),
+  });
 }
