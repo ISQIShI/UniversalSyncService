@@ -10,6 +10,10 @@ const repoRoot = path.resolve(__dirname, '..');
 
 const supportedLocales = ['en', 'zh-CN'];
 const templatePath = path.join(repoRoot, 'docs', 'i18n', 'README.template.md');
+const localePathMap = {
+  en: path.join(repoRoot, 'README.md'),
+  'zh-CN': path.join(repoRoot, 'docs', 'README.zh-CN.md'),
+};
 
 const placeholderRegex = /{{\s*([a-zA-Z0-9._-]+)\s*}}/g;
 
@@ -94,10 +98,10 @@ async function main() {
   }
 
   const targets = args.locale
-    ? [{ locale: args.locale, path: path.join(repoRoot, 'README.md') }]
+    ? [{ locale: args.locale, path: localePathMap[args.locale] }]
     : [
-        { locale: 'en', path: path.join(repoRoot, 'README.md') },
-        { locale: 'zh-CN', path: path.join(repoRoot, 'docs', 'README.zh-CN.md') },
+        { locale: 'en', path: localePathMap.en },
+        { locale: 'zh-CN', path: localePathMap['zh-CN'] },
       ];
 
   if (args.check) {

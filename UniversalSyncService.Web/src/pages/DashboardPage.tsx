@@ -27,10 +27,10 @@ export function DashboardPage() {
 
   return (
     <div className="page-grid">
-      {/* 【UI/UX】将总览区域独立为一个大跨度的 Header 区块，增强视觉冲击力 */}
       <header className="dashboard-header" style={{ marginBottom: 'var(--space-6)' }}>
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '3rem', letterSpacing: '-0.04em', borderBottom: '4px solid var(--border-strong)', paddingBottom: '1rem', marginBottom: '2rem' }}>
           <span>{t('web.dashboard.globalStatus')}</span>
+          <span>{' // '}</span>
           <span className="preserve-case">{status?.serviceName ?? t('web.dashboard.unknownService')}</span>
         </h2>
         <div className="stat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 'var(--space-4)' }}>

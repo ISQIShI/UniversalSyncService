@@ -5,6 +5,7 @@ import { canUseAbsolutePath, formatAbsolutePathValidationError, formatNodeLabel,
 
 export type PlanFormState = CreateOrUpdatePlanRequest & {
   id: string;
+  slaves: (CreateOrUpdatePlanRequest['slaves'][number] & { uiKey: string })[];
 };
 
 type PlanFormProps = {
@@ -115,18 +116,8 @@ export function PlanForm({
         const selectedSlaveNode = nodes.find((node) => node.id === slave.slaveNodeId);
         const showMasterAbsoluteWarning = isAbsolutePlanPath(slave.targetPath) && !canUseAbsolutePath(selectedMasterNode);
         const showSlaveAbsoluteWarning = isAbsolutePlanPath(slave.sourcePath) && !canUseAbsolutePath(selectedSlaveNode);
-        const slaveCardKey = [
-          slave.slaveNodeId,
-          slave.syncMode,
-          slave.sourcePath ?? '.',
-          slave.targetPath ?? '.',
-          slave.conflictResolutionStrategy ?? 'Manual',
-          (slave.filters ?? []).join('|'),
-          (slave.exclusions ?? []).join('|'),
-        ].join(':');
-
         return (
-          <div key={slaveCardKey} className="slave-edit-card">
+          <div key={slave.uiKey} className="slave-edit-card">
             {showMasterAbsoluteWarning ? <div className="message-banner error inline-message">{formatAbsolutePathValidationError('web.plans.masterNodePath', selectedMasterNode, t)}</div> : null}
             {showSlaveAbsoluteWarning ? <div className="message-banner error inline-message">{formatAbsolutePathValidationError('web.plans.slaveNodePath', selectedSlaveNode, t)}</div> : null}
 
@@ -229,6 +220,7 @@ export function PlanForm({
         submitting={submitting}
         submitLabel={t('web.plans.form.savePlan')}
         submittingLabel={t('web.forms.submitting')}
+        cancelLabel={t('web.actions.cancel')}
         onCancel={onCancel}
         submitDisabled={formData.slaves.length === 0}
       />

@@ -10,6 +10,10 @@ type NodeDetailProps = {
 // 分为概览层 (editorial-hero) 和详情列表 (config-list) 两个块区
 export function NodeDetailView({ selectedNode }: NodeDetailProps) {
   const { t, locale } = useI18n();
+  const rootPathLabelKey = selectedNode.nodeType === 'OneDrive'
+    ? 'web.nodes.form.rootPathLabel.oneDrive'
+    : 'web.nodes.form.rootPathLabel.default';
+
   return (
     <div className="plan-detail-stack editorial-container">
       <div className="editorial-hero">
@@ -28,7 +32,7 @@ export function NodeDetailView({ selectedNode }: NodeDetailProps) {
       </div>
 
       <div className="editorial-path-block">
-        <span>{t('web.nodes.form.rootPathLabel.default')}</span>
+        <span>{t(rootPathLabelKey)}</span>
         <strong className="mono">{selectedNode.rootPath ?? '-'}</strong>
       </div>
 

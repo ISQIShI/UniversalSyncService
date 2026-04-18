@@ -10,6 +10,13 @@ import { canUseAbsolutePath, formatAbsolutePathValidationError, getEffectiveMast
 import { useI18n } from '../i18n/useI18n.ts';
 import { useAppStore } from '../store/useAppStore.ts';
 
+function createSlaveFormState(slave: CreateOrUpdatePlanRequest['slaves'][number]) {
+  return {
+    ...slave,
+    uiKey: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  };
+}
+
 function createDefaultForm(nodes: NodeSummary[], defaultName: string): PlanFormState {
   const defaultSlaveNode = getSelectableSlaveNodes(nodes)[0];
   return {
@@ -24,7 +31,7 @@ function createDefaultForm(nodes: NodeSummary[], defaultName: string): PlanFormS
     intervalSeconds: undefined,
     enableFileSystemWatcher: false,
     slaves: [
-      {
+      createSlaveFormState({
         slaveNodeId: defaultSlaveNode?.id ?? '',
         syncMode: 'Bidirectional',
         sourcePath: '.',
@@ -33,7 +40,7 @@ function createDefaultForm(nodes: NodeSummary[], defaultName: string): PlanFormS
         conflictResolutionStrategy: 'Manual',
         filters: [],
         exclusions: [],
-      },
+      }),
     ],
   };
 }
@@ -50,7 +57,7 @@ function mapPlanToForm(plan: PlanDetail): PlanFormState {
     cronExpression: plan.cronExpression ?? '',
     intervalSeconds: plan.intervalSeconds,
     enableFileSystemWatcher: plan.enableFileSystemWatcher,
-    slaves: plan.slaves.map((slave) => ({
+    slaves: plan.slaves.map((slave) => createSlaveFormState({
       slaveNodeId: slave.slaveNodeId,
       syncMode: slave.syncMode,
       sourcePath: slave.sourcePath ?? '.',
@@ -174,7 +181,7 @@ export function PlansPage() {
           setSelectedPlan(null);
           setHistory([]);
           setSelectedPlanId(null);
-          setErrorMsg(error instanceof Error ? error.message : t('web.plans.messages.loadDetailFailed'));
+      setErrorMsg(error instanceof Error ? error.message : 'Failed to load plan details.');
           if (routePlanId === selectedPlanId) {
             navigate('/plans', { replace: true });
           }
@@ -186,7 +193,7 @@ export function PlansPage() {
     return () => {
       isMounted = false;
     };
-  }, [selectedPlanId, apiCredential, canUseAnonymousApi, navigate, routePlanId, t]);
+  }, [selectedPlanId, apiCredential, canUseAnonymousApi, navigate, routePlanId]);
 
   useEffect(() => {
     if (!isEditing && !isCreating) {
@@ -297,19 +304,19 @@ export function PlansPage() {
       ...current,
       slaves: [
         ...current.slaves,
-        {
-          slaveNodeId: defaultSlaveNode?.id ?? '',
-          syncMode: 'Bidirectional',
-          sourcePath: '.',
-          targetPath: '.',
-          enableDeletionProtection: true,
-          conflictResolutionStrategy: 'Manual',
-          filters: [],
-          exclusions: [],
-        },
-      ],
-    }));
-  }
+          createSlaveFormState({
+            slaveNodeId: defaultSlaveNode?.id ?? '',
+            syncMode: 'Bidirectional',
+            sourcePath: '.',
+            targetPath: '.',
+            enableDeletionProtection: true,
+            conflictResolutionStrategy: 'Manual',
+            filters: [],
+            exclusions: [],
+          }),
+        ],
+      }));
+    }
 
   function removeSlave(index: number) {
     updateForm((current) => ({

@@ -61,7 +61,7 @@
   "web.nav.plans.hint": "Sync Configuration",
   "web.nav.nodes.hint": "Infrastructure",
   "web.nav.system.hint": "Settings & Plugins",
-  "web.dashboard.globalStatus": "Global Status // ",
+  "web.dashboard.globalStatus": "Global Status",
   "web.dashboard.unknownService": "Unknown Service",
   "web.dashboard.activeTasks": "Active Tasks",
   "web.dashboard.totalPlans": "Total Sync Plans",

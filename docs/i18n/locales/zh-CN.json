@@ -61,7 +61,7 @@
   "web.nav.plans.hint": "同步配置",
   "web.nav.nodes.hint": "基础设施",
   "web.nav.system.hint": "设置与插件",
-  "web.dashboard.globalStatus": "全局状态 // ",
+  "web.dashboard.globalStatus": "全局状态",
   "web.dashboard.unknownService": "未知服务",
   "web.dashboard.activeTasks": "活跃任务",
   "web.dashboard.totalPlans": "同步计划总数",
