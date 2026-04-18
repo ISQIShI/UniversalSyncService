@@ -7,13 +7,21 @@ import { PlanDetailView } from '../components/plans/PlanDetail.tsx';
 import { PlanForm, type PlanFormState } from '../components/plans/PlanForm.tsx';
 import { PlanList } from '../components/plans/PlanList.tsx';
 import { canUseAbsolutePath, formatAbsolutePathValidationError, getEffectiveMasterNodeId, getNodeById, getSelectableSlaveNodes, isAbsolutePlanPath } from '../components/plans/planPresentation.ts';
+import { useI18n } from '../i18n/useI18n.ts';
 import { useAppStore } from '../store/useAppStore.ts';
 
-function createDefaultForm(nodes: NodeSummary[]): PlanFormState {
+function createSlaveFormState(slave: CreateOrUpdatePlanRequest['slaves'][number]) {
+  return {
+    ...slave,
+    uiKey: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  };
+}
+
+function createDefaultForm(nodes: NodeSummary[], defaultName: string): PlanFormState {
   const defaultSlaveNode = getSelectableSlaveNodes(nodes)[0];
   return {
     id: '',
-    name: '新同步计划',
+    name: defaultName,
     description: '',
     isEnabled: true,
     masterNodeId: '',
@@ -23,7 +31,7 @@ function createDefaultForm(nodes: NodeSummary[]): PlanFormState {
     intervalSeconds: undefined,
     enableFileSystemWatcher: false,
     slaves: [
-      {
+      createSlaveFormState({
         slaveNodeId: defaultSlaveNode?.id ?? '',
         syncMode: 'Bidirectional',
         sourcePath: '.',
@@ -32,7 +40,7 @@ function createDefaultForm(nodes: NodeSummary[]): PlanFormState {
         conflictResolutionStrategy: 'Manual',
         filters: [],
         exclusions: [],
-      },
+      }),
     ],
   };
 }
@@ -49,7 +57,7 @@ function mapPlanToForm(plan: PlanDetail): PlanFormState {
     cronExpression: plan.cronExpression ?? '',
     intervalSeconds: plan.intervalSeconds,
     enableFileSystemWatcher: plan.enableFileSystemWatcher,
-    slaves: plan.slaves.map((slave) => ({
+    slaves: plan.slaves.map((slave) => createSlaveFormState({
       slaveNodeId: slave.slaveNodeId,
       syncMode: slave.syncMode,
       sourcePath: slave.sourcePath ?? '.',
@@ -110,6 +118,7 @@ export function PlansPage() {
   const canExecute = canUseAnonymousApi || isConnected;
   const canManage = canUseAnonymousApi || isConnected;
   const apiCredential = apiKey || '';
+  const { t } = useI18n();
 
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(routePlanId || (plans.length > 0 ? plans[0].id : null));
   const [selectedPlan, setSelectedPlan] = useState<PlanDetail | null>(null);
@@ -172,7 +181,7 @@ export function PlansPage() {
           setSelectedPlan(null);
           setHistory([]);
           setSelectedPlanId(null);
-          setErrorMsg(error instanceof Error ? error.message : '加载计划详情失败。');
+      setErrorMsg(error instanceof Error ? error.message : 'Failed to load plan details.');
           if (routePlanId === selectedPlanId) {
             navigate('/plans', { replace: true });
           }
@@ -205,7 +214,7 @@ export function PlansPage() {
     setSelectedPlan(null);
     setHistory([]);
     navigate('/plans', { replace: true });
-    setFormData(createDefaultForm(nodes));
+    setFormData(createDefaultForm(nodes, t('web.plans.form.defaultPlanName')));
   }
 
   function handleEdit() {
@@ -220,7 +229,7 @@ export function PlansPage() {
   }
 
   async function handleDelete() {
-    if (!selectedPlan || !canManage || !window.confirm(`确认删除计划「${selectedPlan.name}」吗？`)) {
+    if (!selectedPlan || !canManage || !window.confirm(t('web.plans.messages.confirmDelete', { name: selectedPlan.name }))) {
       return;
     }
 
@@ -228,14 +237,14 @@ export function PlansPage() {
       setSubmitting(true);
       resetMessages();
       await deletePlan(selectedPlan.id, apiCredential);
-      setSuccessMsg('计划已删除。');
+      setSuccessMsg(t('web.plans.messages.deleted'));
       setSelectedPlanId(null);
       setSelectedPlan(null);
       setHistory([]);
       navigate('/plans', { replace: true });
       fetchConsoleState();
     } catch (error) {
-      setErrorMsg(error instanceof Error ? error.message : '删除计划失败。');
+      setErrorMsg(error instanceof Error ? error.message : t('web.plans.messages.deleteFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -261,7 +270,7 @@ export function PlansPage() {
       setSubmitting(true);
       resetMessages();
       await executePlanNow(planId);
-      setSuccessMsg('已触发执行，请查看全局历史。');
+      setSuccessMsg(t('web.plans.messages.executeTriggered'));
 
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
@@ -272,7 +281,7 @@ export function PlansPage() {
       setSelectedPlan(planDetail);
       setHistory(planHistory);
     } catch (error) {
-      setErrorMsg(error instanceof Error ? error.message : '执行失败。');
+      setErrorMsg(error instanceof Error ? error.message : t('web.plans.messages.executeFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -295,19 +304,19 @@ export function PlansPage() {
       ...current,
       slaves: [
         ...current.slaves,
-        {
-          slaveNodeId: defaultSlaveNode?.id ?? '',
-          syncMode: 'Bidirectional',
-          sourcePath: '.',
-          targetPath: '.',
-          enableDeletionProtection: true,
-          conflictResolutionStrategy: 'Manual',
-          filters: [],
-          exclusions: [],
-        },
-      ],
-    }));
-  }
+          createSlaveFormState({
+            slaveNodeId: defaultSlaveNode?.id ?? '',
+            syncMode: 'Bidirectional',
+            sourcePath: '.',
+            targetPath: '.',
+            enableDeletionProtection: true,
+            conflictResolutionStrategy: 'Manual',
+            filters: [],
+            exclusions: [],
+          }),
+        ],
+      }));
+    }
 
   function removeSlave(index: number) {
     updateForm((current) => ({
@@ -323,22 +332,22 @@ export function PlansPage() {
     }
 
     if (!formData.name.trim()) {
-      setErrorMsg('计划名称不能为空。');
+      setErrorMsg(t('web.plans.validation.planNameRequired'));
       return;
     }
 
     if (!formData.syncItemType.trim()) {
-      setErrorMsg('同步对象类型不能为空。');
+      setErrorMsg(t('web.plans.validation.syncItemTypeRequired'));
       return;
     }
 
     if (formData.slaves.length === 0) {
-      setErrorMsg('至少需要一个从节点。');
+      setErrorMsg(t('web.plans.validation.slaveRequired'));
       return;
     }
 
     if (formData.triggerType === 'Scheduled' && !formData.cronExpression?.trim() && !formData.intervalSeconds) {
-      setErrorMsg('定时触发至少需要配置 Cron 表达式或间隔秒数。');
+      setErrorMsg(t('web.plans.validation.scheduleRequired'));
       return;
     }
 
@@ -347,12 +356,12 @@ export function PlansPage() {
       const selectedSlaveNode = nodes.find((node) => node.id === slave.slaveNodeId);
 
       if (isAbsolutePlanPath(slave.targetPath) && !canUseAbsolutePath(selectedMasterNode)) {
-        setErrorMsg(formatAbsolutePathValidationError('主节点路径', selectedMasterNode));
+        setErrorMsg(formatAbsolutePathValidationError('web.plans.masterNodePath', selectedMasterNode, t));
         return;
       }
 
       if (isAbsolutePlanPath(slave.sourcePath) && !canUseAbsolutePath(selectedSlaveNode)) {
-        setErrorMsg(formatAbsolutePathValidationError('从节点路径', selectedSlaveNode));
+        setErrorMsg(formatAbsolutePathValidationError('web.plans.slaveNodePath', selectedSlaveNode, t));
         return;
       }
     }
@@ -364,21 +373,21 @@ export function PlansPage() {
 
       if (isCreating) {
         const created = await createPlan(payload, apiCredential);
-        setSuccessMsg('计划已创建。');
+        setSuccessMsg(t('web.plans.messages.created'));
         setIsCreating(false);
         await fetchConsoleState();
         setSelectedPlanId(created.id);
         navigate(`/plans/${created.id}`, { replace: true });
       } else {
         const updated = await updatePlan(formData.id, payload, apiCredential);
-        setSuccessMsg('计划已更新。');
+        setSuccessMsg(t('web.plans.messages.updated'));
         setIsEditing(false);
         await fetchConsoleState();
         setSelectedPlanId(updated.id);
         navigate(`/plans/${updated.id}`, { replace: true });
       }
     } catch (error) {
-      setErrorMsg(error instanceof Error ? error.message : '保存计划失败。');
+      setErrorMsg(error instanceof Error ? error.message : t('web.plans.messages.saveFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -386,7 +395,7 @@ export function PlansPage() {
 
   return (
     <div className="page-grid plans-grid">
-      <Panel title="同步计划" subtitle="查看、编辑并执行同步配置" actions={<button type="button" className="primary" onClick={handleCreateNew} disabled={!canManage || isCreating}>新建计划</button>}>
+      <Panel title={t('web.plans.page.title')} subtitle={t('web.plans.page.subtitle')} actions={<button type="button" className="primary" onClick={handleCreateNew} disabled={!canManage || isCreating}>{t('web.plans.create')}</button>}>
         <PlanList
           plans={plans}
           selectedPlanId={selectedPlanId}
@@ -402,14 +411,14 @@ export function PlansPage() {
       </Panel>
 
       <Panel
-        title={isCreating ? '新建同步计划' : isEditing ? `编辑计划：${formData?.name}` : selectedPlan?.name ?? '计划详情'}
-        subtitle={isCreating ? '配置新的同步计划' : isEditing ? `计划 ID：${formData?.id}` : selectedPlan ? `计划 ID：${selectedPlan.id}` : '请从左侧选择一个计划'}
+        title={isCreating ? t('web.plans.page.createTitle') : isEditing ? t('web.plans.page.editTitle', { name: formData?.name ?? '' }) : selectedPlan?.name ?? t('web.plans.details')}
+        subtitle={isCreating ? t('web.plans.page.createSubtitle') : isEditing ? t('web.plans.page.planIdSubtitle', { id: formData?.id ?? '' }) : selectedPlan ? t('web.plans.page.planIdSubtitle', { id: selectedPlan.id }) : t('web.plans.page.selectHint')}
         preserveTitleCase={Boolean((isEditing && formData?.name) || (!isCreating && !isEditing && selectedPlan))}
         actions={selectedPlan && !isCreating && !isEditing ? (
           <div className="plan-detail-actions">
-            <button type="button" onClick={handleEdit} disabled={!canManage}>编辑</button>
-            <button type="button" onClick={handleDelete} className="danger-text" disabled={!canManage || submitting}>删除</button>
-            <button type="button" className="primary" onClick={() => handleExecutePlan(selectedPlan.id)} disabled={!canExecute || submitting || storeIsBusy || !(plans.find((plan) => plan.id === selectedPlan.id)?.isEnabled ?? selectedPlan.isEnabled)}>立即执行同步</button>
+            <button type="button" onClick={handleEdit} disabled={!canManage}>{t('web.actions.edit')}</button>
+            <button type="button" onClick={handleDelete} className="danger-text" disabled={!canManage || submitting}>{t('web.actions.delete')}</button>
+            <button type="button" className="primary" data-testid="execute-selected-plan-button" onClick={() => handleExecutePlan(selectedPlan.id)} disabled={!canExecute || submitting || storeIsBusy || !(plans.find((plan) => plan.id === selectedPlan.id)?.isEnabled ?? selectedPlan.isEnabled)}>{t('web.plans.page.executeNow')}</button>
           </div>
         ) : undefined}>
         {errorMsg ? <MessageBanner tone="error" message={errorMsg} inline /> : null}
@@ -433,7 +442,7 @@ export function PlansPage() {
         ) : selectedPlan ? (
           <PlanDetailView selectedPlan={selectedPlan} nodes={nodes} history={history} />
         ) : (
-          <div className="empty-state editorial-empty" style={{ margin: 'var(--space-6)' }}>请先选择一个同步计划。</div>
+          <div className="empty-state editorial-empty" style={{ margin: 'var(--space-6)' }}>{t('web.plans.page.selectHint')}</div>
         )}
       </Panel>
     </div>

@@ -1,4 +1,5 @@
 import { LayoutDashboard, Network, Settings, Waypoints } from 'lucide-react';
+import { useI18n } from '../../i18n/useI18n.ts';
 
 type NavigationItem = 'dashboard' | 'plans' | 'nodes' | 'system';
 
@@ -7,18 +8,20 @@ type SidebarProps = {
   onSelect: (item: NavigationItem) => void;
 };
 
-const items: Array<{ id: NavigationItem; label: string; hint: string; icon: React.ReactNode }> = [
-  { id: 'dashboard', label: '总览', hint: '概览与历史', icon: <LayoutDashboard size={18} /> },
-  { id: 'plans', label: '计划', hint: '同步配置', icon: <Waypoints size={18} /> },
-  { id: 'nodes', label: '节点', hint: '基础设施', icon: <Network size={18} /> },
-  { id: 'system', label: '系统', hint: '设置与插件', icon: <Settings size={18} /> },
-];
-
 export function Sidebar({ activeItem, onSelect }: SidebarProps) {
+  const { t } = useI18n();
+
+  const items: Array<{ id: NavigationItem; label: string; hint: string; icon: React.ReactNode }> = [
+    { id: 'dashboard', label: t('web.nav.dashboard'), hint: t('web.nav.dashboard.hint'), icon: <LayoutDashboard size={18} /> },
+    { id: 'plans', label: t('web.nav.plans'), hint: t('web.nav.plans.hint'), icon: <Waypoints size={18} /> },
+    { id: 'nodes', label: t('web.nav.nodes'), hint: t('web.nav.nodes.hint'), icon: <Network size={18} /> },
+    { id: 'system', label: t('web.nav.system'), hint: t('web.nav.system.hint'), icon: <Settings size={18} /> },
+  ];
+
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
-        <span className="sidebar-eyebrow">控制台</span>
+        <span className="sidebar-eyebrow">{t('web.app.console')}</span>
         <strong>Universal Sync</strong>
       </div>
 

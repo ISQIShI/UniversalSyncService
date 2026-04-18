@@ -1,58 +1,58 @@
 # Universal Sync Service
 
-A headless file synchronization service with plugin-based node providers and Web management console.
+一个无头文件同步服务，支持插件化节点提供者与 Web 管理控制台。
 
-## Features
+## 功能特性
 
-- Create, edit, and execute synchronization plans
-- Support Local Filesystem and OneDrive node providers
-- Manage service status, plans, nodes, and system configuration in Web UI
+- 创建、编辑并执行同步计划
+- 支持本地文件系统和 OneDrive 节点提供者
+- 在 Web 界面中管理服务状态、计划、节点和系统配置
 
-## Setup
+## 快速开始
 
-### Prerequisites
+### 前置条件
 
-- Install .NET SDK 9.0 or newer
-- Install Node.js 20 or newer
+- 安装 .NET SDK 9.0 或更高版本
+- 安装 Node.js 20 或更高版本
 
-### Install dependencies
+### 安装依赖
 
 ```powershell
 dotnet build "UniversalSyncService.slnx"
 npm --prefix "UniversalSyncService.Web" install
 ```
 
-### Run host service
+### 运行 Host 服务
 
 ```powershell
 dotnet run --project "UniversalSyncService.Host/UniversalSyncService.Host.csproj"
 ```
 
-### Run Web console
+### 运行 Web 控制台
 
 ```powershell
 npm --prefix "UniversalSyncService.Web" run dev
 ```
 
-### Build Web assets
+### 构建 Web 静态资源
 
 ```powershell
 npm --prefix "UniversalSyncService.Web" run build
 ```
 
-### Run integration tests
+### 运行集成测试
 
 ```powershell
 dotnet test "tests/UniversalSyncService.Host.IntegrationTests/UniversalSyncService.Host.IntegrationTests.csproj"
 dotnet test "tests/UniversalSyncService.IntegrationTests/UniversalSyncService.IntegrationTests.csproj"
 ```
 
-### Run Playwright end-to-end tests
+### 运行 Playwright 端到端测试
 
 ```powershell
 npm --prefix "UniversalSyncService.Web" run test:e2e
 ```
 
-## Notes
+## 说明
 
-This README can be generated from docs/i18n/README.template.md and locale resources.
+该 README 可基于 docs/i18n/README.template.md 与语言资源生成。

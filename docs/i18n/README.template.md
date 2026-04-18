@@ -1,58 +1,58 @@
-# Universal Sync Service
+# {{readme.title}}
 
-A headless file synchronization service with plugin-based node providers and Web management console.
+{{readme.description}}
 
-## Features
+## {{readme.features.title}}
 
-- Create, edit, and execute synchronization plans
-- Support Local Filesystem and OneDrive node providers
-- Manage service status, plans, nodes, and system configuration in Web UI
+- {{readme.features.syncPlans}}
+- {{readme.features.nodeProviders}}
+- {{readme.features.webConsole}}
 
-## Setup
+## {{readme.setup.title}}
 
-### Prerequisites
+### {{readme.setup.prerequisites}}
 
-- Install .NET SDK 9.0 or newer
-- Install Node.js 20 or newer
+- {{readme.setup.dotnet}}
+- {{readme.setup.node}}
 
-### Install dependencies
+### {{readme.setup.install}}
 
 ```powershell
 dotnet build "UniversalSyncService.slnx"
 npm --prefix "UniversalSyncService.Web" install
 ```
 
-### Run host service
+### {{readme.setup.runHost}}
 
 ```powershell
 dotnet run --project "UniversalSyncService.Host/UniversalSyncService.Host.csproj"
 ```
 
-### Run Web console
+### {{readme.setup.runWeb}}
 
 ```powershell
 npm --prefix "UniversalSyncService.Web" run dev
 ```
 
-### Build Web assets
+### {{readme.setup.buildWeb}}
 
 ```powershell
 npm --prefix "UniversalSyncService.Web" run build
 ```
 
-### Run integration tests
+### {{readme.setup.tests}}
 
 ```powershell
 dotnet test "tests/UniversalSyncService.Host.IntegrationTests/UniversalSyncService.Host.IntegrationTests.csproj"
 dotnet test "tests/UniversalSyncService.IntegrationTests/UniversalSyncService.IntegrationTests.csproj"
 ```
 
-### Run Playwright end-to-end tests
+### {{readme.setup.playwright}}
 
 ```powershell
 npm --prefix "UniversalSyncService.Web" run test:e2e
 ```
 
-## Notes
+## {{readme.notes.title}}
 
-This README can be generated from docs/i18n/README.template.md and locale resources.
+{{readme.notes.generated}}
