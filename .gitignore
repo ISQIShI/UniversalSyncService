@@ -1,0 +1,67 @@
+# IDE / workspace
+.vs/
+.vscode/
+.sisyphus/
+
+# .NET build outputs
+**/bin/
+**/obj/
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Ll]og/
+[Ll]ogs/
+
+# .NET / package artifacts
+project.lock.json
+project.fragment.lock.json
+artifacts/
+ScaffoldingReadMe.txt
+*.nupkg
+*.snupkg
+*.binlog
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+*.VisualState.xml
+TestResult.xml
+nunit-*.xml
+
+# Node / frontend outputs
+**/node_modules/
+**/dist/
+**/.env.local
+
+# Test and temp outputs
+UniversalSyncService.Web/test-results/
+UniversalSyncService.Web/playwright-report/
+UniversalSyncService.Web/.playwright/
+UniversalSyncService.Host/logs/
+UniversalSyncService.Host/data/
+UniversalSyncService.Host/sync-test/
+*.log
+CodeCoverage/
+
+# Local scratch / one-off files
+temp_*.css
+patch.js
+fix_*.ps1
+
+# Tools and references
+tools/
+_references/
+
+# OS / local files
+Thumbs.db
+Desktop.ini
+
+# Project
+UniversalSyncService/
+
+AGENTS.md

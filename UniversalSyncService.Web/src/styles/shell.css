@@ -1,0 +1,199 @@
+/* ==========================================================================
+   APP SHELL
+   ========================================================================== */
+#root {
+  height: 100vh;
+}
+
+.console-shell {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+}
+
+/* Sidebar */
+.sidebar {
+  background-color: var(--bg-panel-solid);
+  border-right: 2px solid var(--border-strong);
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4);
+  z-index: 10;
+  position: relative;
+}
+
+.sidebar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: -6px;
+  width: 4px;
+  height: 100%;
+  background: repeating-linear-gradient(
+    45deg,
+    var(--border-subtle),
+    var(--border-subtle) 2px,
+    transparent 2px,
+    transparent 6px
+  );
+}
+
+.sidebar-brand {
+  margin-bottom: var(--space-6);
+  padding: var(--space-3) 0;
+  border-bottom: 4px solid var(--border-strong);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.sidebar-eyebrow {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--accent-primary);
+  font-weight: 700;
+  background: var(--accent-primary-subtle);
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--accent-primary);
+  align-self: flex-start;
+}
+
+.sidebar-brand strong {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.sidebar-link {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: var(--space-3);
+  color: var(--text-muted);
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  text-align: left;
+  border: 2px solid transparent;
+  position: relative;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  background: var(--bg-base);
+}
+
+.sidebar-link:hover {
+  background: var(--bg-panel-hover);
+  color: var(--text-main);
+  border: 2px solid var(--border-subtle);
+  transform: translate(-4px, -4px);
+  box-shadow: 4px 4px 0px var(--border-subtle);
+}
+
+.sidebar-link.active {
+  background: var(--accent-primary);
+  color: var(--accent-primary-text);
+  border: 2px solid var(--border-strong);
+  box-shadow: 6px 6px 0px var(--border-strong);
+  transform: translate(-4px, -4px);
+  z-index: 2;
+}
+
+.sidebar-link span {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+
+.sidebar-link small {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  opacity: 0.9;
+  margin-top: 4px;
+  letter-spacing: 0.05em;
+}
+
+/* Main Content */
+.console-main {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow-y: auto;
+  position: relative;
+}
+
+.topbar {
+  background: var(--bg-panel-solid);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 2px solid var(--border-strong);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.topbar h1 {
+  font-size: 2rem;
+  letter-spacing: -0.04em;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-4);
+}
+
+/* Auth Strip */
+.auth-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-6);
+  background: var(--accent-primary-subtle);
+  border-bottom: 2px solid var(--border-strong);
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+}
+
+.auth-strip-auto {
+  justify-content: space-between;
+}
+
+@media (max-width: 960px) {
+  .console-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+  .sidebar {
+    padding: var(--space-3);
+    border-right: none;
+    border-bottom: 2px solid var(--border-strong);
+  }
+  .sidebar::after {
+    display: none;
+  }
+  .sidebar-brand {
+    margin-bottom: var(--space-3);
+  }
+  .sidebar-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}

@@ -1,0 +1,157 @@
+# UniversalSyncService 业务配置根节点。
+UniversalSyncService:
+  # 服务运行配置。
+  Service:
+    # 服务名称，用于日志和状态展示。
+    ServiceName: "UniversalSyncService.Host"
+    # 心跳日志输出间隔（秒）。
+    HeartbeatIntervalSeconds: 10
+  # 日志配置。
+  Logging:
+    # 全局最小日志级别。
+    MinimumLevel: "Debug"
+    # 是否启用控制台日志输出。
+    EnableConsoleSink: true
+    # 是否启用文件日志输出。
+    EnableFileSink: true
+    # 按命名空间覆盖日志级别，例如 Microsoft=Warning。
+    Overrides:
+      Microsoft: "Warning"
+      System: "Warning"
+    # 文件日志输出配置。
+    File:
+      # 日志文件路径，支持 Serilog Rolling 文件名模板。
+      Path: "logs/universal-sync-.log"
+      # 滚动周期，可选 Infinite/Year/Month/Day/Hour/Minute。
+      RollingInterval: "Day"
+      # 保留文件数量上限，null 表示不限制。
+      RetainedFileCountLimit: 14
+      # 单文件大小上限（字节），null 表示不限制。
+      FileSizeLimitBytes: 10485760
+      # 达到文件大小上限时是否滚动新文件。
+      RollOnFileSizeLimit: true
+      # 日志输出模板。
+      OutputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} {Level:u3}] ({SourceContext}) {Message:lj}{NewLine}{Exception}"
+  # 接口层配置。
+  Interface:
+    # 是否启用 gRPC 接口。
+    EnableGrpc: true
+    # 是否启用浏览器友好 HTTP API。
+    EnableHttpApi: true
+    # 是否启用 Web 控制台静态页面。
+    EnableWebConsole: true
+    # 是否强制要求 Web 管理接口访问密钥。关闭后浏览器和插件可直接访问 HTTP API。
+    RequireManagementApiKey: false
+    # 当请求来自 127.0.0.1 / ::1 时，是否跳过 Web 管理接口密钥校验。
+    AllowAnonymousLoopback: true
+    # Web 管理接口访问密钥。浏览器或插件调用 HTTP API 时需以 Bearer Token 方式携带。
+    ManagementApiKey: "change-me"
+  # 插件系统配置。
+  Plugins:
+    # 是否启用插件系统。
+    EnablePluginSystem: true
+    # 插件根目录（支持相对 ContentRoot）。
+    PluginDirectory: "plugins"
+    # 插件描述符列表。
+    Descriptors: []
+  # 同步框架配置。
+  Sync:
+    # 是否启用同步框架。
+    EnableSyncFramework: true
+    # 调度器轮询间隔（秒）。
+    SchedulerPollingIntervalSeconds: 30
+    # 任务执行最大并发数。
+    MaxConcurrentTasks: 1
+    # 同步历史保留版本数。
+    HistoryRetentionVersions: 20
+    # 同步历史存储文件路径（相对 ContentRoot 或绝对路径）。
+    HistoryStorePath: "data/sync-history.db"
+    # 隐式本地主节点在内容根目录下映射的工作目录。
+    HostWorkspacePath: "sync-test/master"
+    # 已配置的节点列表。
+    Nodes:
+      -
+        # 节点唯一标识。
+        Id: "local-slave"
+        # 节点显示名称。
+        Name: "本地从节点"
+        # 节点类型标识，例如 Local、WebDAV、OneDrive。
+        NodeType: "Local"
+        # 节点连接配置。
+        ConnectionSettings:
+          RootPath: "sync-test/slave"
+        # 节点自定义选项。
+        CustomOptions: {}
+        # 节点创建时间。
+        CreatedAt: "2026-04-09T00:00:00.0000000+08:00"
+        # 节点最后修改时间。
+        ModifiedAt: "2026-04-09T00:00:00.0000000+08:00"
+        # 节点是否启用。
+        IsEnabled: true
+      # OneDrive 节点配置示例（使用浏览器认证，推荐）
+      # -
+      #   Id: "onedrive-1"
+      #   Name: "我的 OneDrive"
+      #   NodeType: "OneDrive"
+      #   ConnectionSettings:
+      #     AuthMode: "InteractiveBrowser"  # 自动打开浏览器认证
+      #     ClientId: "your-client-id"
+      #     TenantId: "common"
+      #     InteractiveBrowserRedirectPort: "8765"
+      #     Scopes: "Files.ReadWrite offline_access User.Read"
+      #     RootPath: "UniversalSync"
+      #   CustomOptions: {}
+      #   CreatedAt: "2026-04-09T00:00:00.0000000+08:00"
+      #   ModifiedAt: "2026-04-09T00:00:00.0000000+08:00"
+      #   IsEnabled: false  # 配置完成后设为 true 启用
+    # 同步计划列表。
+    Plans:
+      -
+        # 计划唯一标识。
+        Id: "local-filesystem-test"
+        # 计划显示名称。
+        Name: "本地文件系统测试计划"
+        # 计划描述。
+        Description: "用于本地节点与普通文件系统同步对象的功能测试。"
+        # 主节点 ID。
+        MasterNodeId: "host-local"
+        # 同步对象类型标识。
+        SyncItemType: "FileSystem"
+        # 从节点配置列表。
+        SlaveConfigurations:
+          -
+            # 从节点 ID。
+            SlaveNodeId: "local-slave"
+            # 同步模式。
+            SyncMode: "Bidirectional"
+            # 源路径。
+            SourcePath: "."
+            # 目标路径。
+            TargetPath: "."
+            # 是否启用删除保护。
+            EnableDeletionProtection: true
+            # 冲突处理策略。默认 Manual，可选 KeepNewer 等。
+            ConflictResolutionStrategy: "KeepNewer"
+            # 包含过滤规则。
+            Filters: []
+            # 排除规则。
+            Exclusions: []
+        # 调度配置。
+        Schedule:
+          # 触发方式。
+          TriggerType: "Manual"
+          # Cron 表达式。当前仅占位保存，不参与解析。
+          # 时间间隔。
+          # 下一次计划执行时间。
+          # 是否启用文件系统监听。当前仅作为配置保留。
+          EnableFileSystemWatcher: false
+        # 计划是否启用。
+        IsEnabled: true
+        # 计划创建时间。
+        CreatedAt: "2026-04-09T00:00:00.0000000+08:00"
+        # 计划最后修改时间。
+        ModifiedAt: "2026-04-09T13:11:30.7657003+08:00"
+        # 计划最后执行时间。
+        LastExecutedAt: "2026-04-09T13:11:30.7656957+08:00"
+        # 计划累计执行次数。
+        ExecutionCount: 20

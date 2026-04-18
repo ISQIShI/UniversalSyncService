@@ -1,0 +1,65 @@
+UniversalSyncService:
+  Service:
+    ServiceName: "UniversalSyncService.Host.Playwright"
+    HeartbeatIntervalSeconds: 60
+  Interface:
+    EnableGrpc: true
+    EnableHttpApi: true
+    EnableWebConsole: true
+    RequireManagementApiKey: false
+    AllowAnonymousLoopback: true
+    ManagementApiKey: "playwright-key"
+  Logging:
+    MinimumLevel: "Information"
+    EnableConsoleSink: false
+    EnableFileSink: false
+    Overrides: {}
+    File:
+      Path: "logs/playwright-.log"
+      RollingInterval: "Day"
+      RetainedFileCountLimit: 2
+      FileSizeLimitBytes: 1048576
+      RollOnFileSizeLimit: true
+      OutputTemplate: "{Message:lj}{NewLine}{Exception}"
+  Plugins:
+    EnablePluginSystem: false
+    PluginDirectory: "plugins"
+    Descriptors: []
+  Sync:
+    EnableSyncFramework: true
+    SchedulerPollingIntervalSeconds: 60
+    MaxConcurrentTasks: 1
+    HistoryRetentionVersions: 20
+    HistoryStorePath: "data/playwright-sync-history.db"
+    HostWorkspacePath: "sync-test/master"
+    Nodes:
+      - Id: "local-slave"
+        Name: "本地从节点"
+        NodeType: "Local"
+        ConnectionSettings:
+          RootPath: "sync-test/slave"
+        CustomOptions: {}
+        CreatedAt: "2026-04-09T00:00:00+08:00"
+        ModifiedAt: "2026-04-09T00:00:00+08:00"
+        IsEnabled: true
+    Plans:
+      - Id: "local-filesystem-test"
+        Name: "本地文件系统测试计划"
+        Description: "供 Playwright 浏览器验收使用。"
+        MasterNodeId: ""
+        SyncItemType: "FileSystem"
+        SlaveConfigurations:
+          - SlaveNodeId: "local-slave"
+            SyncMode: "Bidirectional"
+            SourcePath: "."
+            TargetPath: "."
+            EnableDeletionProtection: true
+            Filters: []
+            Exclusions: []
+        Schedule:
+          TriggerType: "Manual"
+          EnableFileSystemWatcher: false
+        IsEnabled: true
+        CreatedAt: "2026-04-09T00:00:00+08:00"
+        ModifiedAt: "2026-04-09T00:00:00+08:00"
+        ExecutionCount: 0

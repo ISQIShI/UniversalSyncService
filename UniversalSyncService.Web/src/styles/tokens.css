@@ -1,0 +1,86 @@
+/* ==========================================================================
+   TOKENS - Brutalist & Editorial
+   ========================================================================== */
+:root {
+  color-scheme: dark;
+
+  /* TYPOGRAPHY */
+  --font-sans: 'Segoe UI', 'Microsoft YaHei UI', 'PingFang SC', 'Noto Sans CJK SC', sans-serif;
+  --font-mono: 'Cascadia Mono', 'Microsoft YaHei Mono', 'SFMono-Regular', Consolas, monospace;
+  --font-display: 'Arial Black', 'Segoe UI', 'Microsoft YaHei UI', sans-serif; /* 本地字体栈，避免运行时外链 */
+
+  /* CORE COLORS (Dark) */
+  --bg-base: #000000; /* Pure black for maximum contrast */
+  --bg-panel: #111111;
+  --bg-panel-hover: #1a1a1a;
+  --bg-panel-solid: #111111;
+
+  /* BORDERS */
+  --border-subtle: #333333;
+  --border-strong: #ffffff; /* Stark white borders in dark mode */
+  --border-accent: #ff3e00;
+
+  /* TEXT */
+  --text-main: #ffffff;
+  --text-muted: #888888;
+  --text-dim: #666666;
+
+  /* BRAND & ACCENTS */
+  --accent-primary: #ff3e00; /* More aggressive vermilion/orange */
+  --accent-primary-hover: #e03600;
+  --accent-primary-text: #ffffff;
+  --accent-primary-subtle: rgba(255, 62, 0, 0.15);
+
+  --status-good: #00ff66;
+  --status-good-subtle: rgba(0, 255, 102, 0.1);
+  --status-warn: #ffcc00;
+  --status-warn-subtle: rgba(255, 204, 0, 0.1);
+  --status-bad: #ff0033;
+  --status-bad-subtle: rgba(255, 0, 51, 0.1);
+
+  /* SPACING - Expanded Editorial Scale */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 1rem;
+  --space-4: 1.5rem;
+  --space-5: 2.5rem;
+  --space-6: 4rem;
+  --space-8: 8rem;
+
+  /* RADII */
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-full: 0px;
+
+  /* SHADOWS - Hard edged offset */
+  --shadow-offset: 4px;
+  --shadow-panel: var(--shadow-offset) var(--shadow-offset) 0px var(--border-subtle);
+  --shadow-hover: var(--shadow-offset) var(--shadow-offset) 0px var(--border-strong);
+  --shadow-active: 2px 2px 0px var(--accent-primary);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg-base: #f0f0f0;
+  --bg-panel: #ffffff;
+  --bg-panel-hover: #e0e0e0;
+  --bg-panel-solid: #ffffff;
+
+  --border-subtle: #cccccc;
+  --border-strong: #000000;
+  --border-accent: #ff3e00;
+
+  --text-main: #000000;
+  --text-muted: #666666;
+  --text-dim: #999999;
+
+  --accent-primary: #ff3e00;
+  --accent-primary-hover: #e03600;
+  --accent-primary-text: #ffffff;
+  --accent-primary-subtle: rgba(255, 62, 0, 0.1);
+
+  --shadow-panel: var(--shadow-offset) var(--shadow-offset) 0px var(--border-strong);
+  --shadow-hover: 6px 6px 0px var(--border-strong);
+  --shadow-active: 2px 2px 0px var(--accent-primary);
+}

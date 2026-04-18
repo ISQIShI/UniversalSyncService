@@ -1,0 +1,351 @@
+/* ==========================================================================
+   COMPONENTS
+   ========================================================================== */
+
+/* Inputs & Buttons */
+input[type="password"],
+input[type="text"],
+input[type="number"],
+select,
+textarea {
+  background: var(--bg-base);
+  border: 2px solid var(--border-strong);
+  color: var(--text-main);
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  width: 100%;
+}
+
+input[type="password"]:focus,
+input[type="text"]:focus,
+input[type="number"]:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: var(--shadow-active);
+  transform: translate(-2px, -2px);
+}
+
+button {
+  background: var(--bg-base);
+  border: 2px solid var(--border-strong);
+  color: var(--text-main);
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  font-weight: 700;
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 2px 2px 0px var(--border-strong);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+button:hover:not(:disabled) {
+  transform: translate(-4px, -4px);
+  box-shadow: 6px 6px 0px var(--border-strong);
+}
+
+button:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 0px 0px 0px var(--border-strong);
+}
+
+button.primary {
+  background: var(--accent-primary);
+  color: var(--accent-primary-text);
+  border-color: var(--border-strong);
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--accent-primary-hover);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+/* Panels & Cards */
+.panel {
+  background: var(--bg-panel-solid);
+  border: 2px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-panel);
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.panel::before {
+  content: '';
+  position: absolute;
+  top: -2px; left: -2px; right: -2px; bottom: -2px;
+  border: 1px solid var(--border-subtle);
+  pointer-events: none;
+}
+
+.panel:hover {
+  box-shadow: var(--shadow-hover);
+  transform: translate(-2px, -2px);
+}
+
+.panel-header {
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 2px solid var(--border-strong);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-panel-hover);
+  position: relative;
+}
+
+.panel-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.panel-title h2 {
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+
+.panel-title p {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.panel-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.panel-content {
+  padding: var(--space-5);
+  flex: 1;
+}
+
+/* Tables */
+.console-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  text-align: left;
+  font-size: 0.85rem;
+  border: 2px solid var(--border-strong);
+}
+
+.console-table th {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--text-main);
+  background: var(--bg-panel-hover);
+  font-weight: 600;
+  padding: var(--space-4);
+  border-bottom: 2px solid var(--border-strong);
+  letter-spacing: 0.05em;
+}
+
+.console-table td {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
+}
+
+.console-table tr:last-child td {
+  border-bottom: none;
+}
+
+.console-table tr:hover td {
+  background: var(--bg-base);
+}
+
+/* Badges & Toggles */
+.badge,
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 2px solid currentColor;
+  letter-spacing: 0.05em;
+}
+
+.badge.active,
+.status-badge.active {
+  background: var(--bg-panel-solid);
+  color: var(--text-main);
+}
+
+.badge.healthy,
+.status-badge.healthy {
+  /* 【UI】正向状态采用高对比实心块，保证“已启用/系统正常”等文案在浅深色主题下都清晰 */
+  background: var(--status-good);
+  color: #000000;
+  border-color: var(--status-good);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.28);
+}
+
+.badge.warning,
+.status-badge.warning {
+  background: var(--status-warn-subtle);
+  color: var(--status-warn);
+}
+
+.badge.danger,
+.status-badge.danger {
+  background: var(--status-bad-subtle);
+  color: var(--status-bad);
+}
+
+.badge.muted,
+.status-badge.muted {
+  background: var(--bg-base);
+  color: var(--text-muted);
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.toggle-row input[type="checkbox"] {
+  appearance: none;
+  width: 48px;
+  height: 24px;
+  background: var(--bg-base);
+  border: 2px solid var(--border-strong);
+  position: relative;
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.toggle-row input[type="checkbox"]::after {
+  content: '';
+  position: absolute;
+  top: 0px;
+  left: 0px;
+  width: 20px;
+  height: 20px;
+  background: var(--border-strong);
+  transition: all 0.2s;
+}
+
+.toggle-row input[type="checkbox"]:checked {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary-subtle);
+}
+
+.toggle-row input[type="checkbox"]:checked::after {
+  transform: translateX(24px);
+  background: var(--accent-primary);
+}
+
+.theme-select-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.theme-select-row select {
+  padding: 0.5rem;
+  width: auto;
+  border-radius: 0;
+  text-transform: uppercase;
+}
+
+/* Messages & Empty States */
+.message-banner {
+  padding: var(--space-4);
+  margin: var(--space-4) var(--space-6) 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  border: 2px solid transparent;
+  box-shadow: var(--shadow-panel);
+}
+
+.message-banner::before {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.message-banner.error {
+  background: var(--status-bad-subtle);
+  color: var(--status-bad);
+  border-color: var(--status-bad);
+}
+
+.message-banner.error::before { content: '[ERROR]'; }
+
+.message-banner.success {
+  /* 【UI】成功横幅与健康状态徽章使用同一高对比策略，避免绿色浅底造成的辨识度不足 */
+  background: var(--status-good);
+  color: #000000;
+  border-color: var(--status-good);
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.22);
+}
+
+.message-banner.success::before { content: '[OK]'; }
+
+.message-banner.info {
+  background: var(--bg-panel-hover);
+  color: var(--text-main);
+  border-color: var(--border-strong);
+  margin: 0 0 var(--space-4) 0;
+}
+
+.message-banner.info::before { content: '[INFO]'; }
+
+.empty-state {
+  text-align: center;
+  padding: var(--space-8) var(--space-4);
+  color: var(--text-muted);
+  font-size: 1rem;
+  border: 2px dashed var(--border-strong);
+  margin: var(--space-4) 0;
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  background: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.02) 10px, rgba(255,255,255,0.02) 20px);
+}
+
+.empty-state-inline {
+  margin-top: 0;
+  padding: var(--space-4);
+}

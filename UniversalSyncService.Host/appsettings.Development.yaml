@@ -1,0 +1,24 @@
+UniversalSyncService:
+  Logging:
+    MinimumLevel: Debug
+    # OneDrive 认证相关日志设为 Information 以便查看认证流程
+    Overrides:
+      UniversalSyncService.Core.Nodes.OneDrive: "Information"
+  
+  # 开发环境 OneDrive 节点配置示例
+  # Sync:
+  #   Nodes:
+  #     -
+  #       Id: "onedrive-dev"
+  #       Name: "OneDrive 开发环境"
+  #       NodeType: "OneDrive"
+  #       ConnectionSettings:
+  #         AuthMode: "InteractiveBrowser"  # 推荐：自动打开浏览器认证
+  #         ClientId: "your-client-id"
+  #         TenantId: "common"
+  #         Scopes: "Files.ReadWrite offline_access User.Read"
+  #         RootPath: "DevTest"
+  #       CustomOptions: {}
+  #       CreatedAt: "2026-04-09T00:00:00.0000000+08:00"
+  #       ModifiedAt: "2026-04-09T00:00:00.0000000+08:00"
+  #       IsEnabled: true

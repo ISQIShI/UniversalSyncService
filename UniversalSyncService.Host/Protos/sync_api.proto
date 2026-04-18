@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+option csharp_namespace = "UniversalSyncService.Host.Grpc";
+
+package universal_sync_service;
+
+service SyncApi {
+  rpc ListPlans (ListPlansRequest) returns (ListPlansResponse);
+  rpc ExecutePlanNow (ExecutePlanNowRequest) returns (ExecutePlanNowResponse);
+  rpc GetRecentHistory (GetRecentHistoryRequest) returns (GetRecentHistoryResponse);
+}
+
+message ListPlansRequest {}
+
+message ListPlansResponse {
+  repeated SyncPlanItem plans = 1;
+}
+
+message SyncPlanItem {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  bool is_enabled = 4;
+  string master_node_id = 5;
+  string sync_item_type = 6;
+  int32 execution_count = 7;
+  string last_executed_at = 8;
+}
+
+message ExecutePlanNowRequest {
+  string plan_id = 1;
+}
+
+message ExecutePlanNowResponse {
+  string plan_id = 1;
+  int32 total_tasks = 2;
+  int32 success_count = 3;
+  int32 no_changes_count = 4;
+  int32 conflict_count = 5;
+  int32 failed_count = 6;
+}
+
+message GetRecentHistoryRequest {
+  string plan_id = 1;
+  int32 limit = 2;
+}
+
+message GetRecentHistoryResponse {
+  repeated SyncHistoryItem entries = 1;
+}
+
+message SyncHistoryItem {
+  string id = 1;
+  string plan_id = 2;
+  string task_id = 3;
+  string node_id = 4;
+  string path = 5;
+  string name = 6;
+  int64 size = 7;
+  string state = 8;
+  string sync_timestamp = 9;
+  int64 sync_version = 10;
+  string checksum = 11;
+}

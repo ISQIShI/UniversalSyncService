@@ -1,0 +1,9 @@
+<Solution>
+  <Project Path="UniversalSyncService.Abstractions/UniversalSyncService.Abstractions.csproj" Id="68fcf824-f0ca-46aa-ab74-26132f199ba5" />
+  <Project Path="UniversalSyncService.Core/UniversalSyncService.Core.csproj" Id="e18e10fd-66c3-4309-a7eb-ce948b07fa9c" />
+  <Project Path="UniversalSyncService.Host/UniversalSyncService.Host.csproj" />
+  <Project Path="UniversalSyncService/UniversalSyncService.csproj" Id="dce848e5-c4f8-431e-be8c-6236a92685f1" />
+  <Project Path="tests/UniversalSyncService.IntegrationTests/UniversalSyncService.IntegrationTests.csproj" />
+  <Project Path="tests/UniversalSyncService.Host.IntegrationTests/UniversalSyncService.Host.IntegrationTests.csproj" />
+  <Project Path="tools/OneDriveCredentialConfigurator/OneDriveCredentialConfigurator.csproj" />
+</Solution>
