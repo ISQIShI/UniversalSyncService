@@ -1,50 +1,53 @@
 import type { ConfigSummary } from '../../api.ts';
 import { MessageBanner } from '../common/MessageBanner.tsx';
 import { StatusBadge } from '../common/StatusBadge.tsx';
+import { useI18n } from '../../i18n/useI18n.ts';
 
 type SystemConfigPanelProps = {
   configSummary: ConfigSummary | null;
 };
 
 export function SystemConfigPanel({ configSummary }: SystemConfigPanelProps) {
+  const { t } = useI18n();
+
   if (!configSummary) {
-    return <div className="empty-state">暂时无法读取系统配置。</div>;
+    return <div className="empty-state">{t('web.system.config.empty')}</div>;
   }
 
   return (
     <>
       <MessageBanner
         tone="info"
-        message="提示：宿主默认主节点（host-local）与 Local 类型节点都支持在计划里显式填写绝对路径；其他节点类型仍按各自根路径下的相对路径处理。"
+        message={t('web.system.config.notice')}
         inline
       />
       <div className="config-list">
         <div className="config-item">
-          <span>服务标识</span>
+          <span>{t('web.system.config.serviceName')}</span>
           <strong>{configSummary.serviceName}</strong>
         </div>
         <div className="config-item">
-          <span>配置文件路径</span>
+          <span>{t('web.system.config.configPath')}</span>
           <strong>{configSummary.configurationFilePath}</strong>
         </div>
         <div className="config-item">
-          <span>同步引擎</span>
-          <StatusBadge tone={configSummary.enableSyncFramework ? 'healthy' : 'muted'} label={configSummary.enableSyncFramework ? '已启用' : '已停用'} />
+          <span>{t('web.system.config.syncEngine')}</span>
+          <StatusBadge tone={configSummary.enableSyncFramework ? 'healthy' : 'muted'} label={configSummary.enableSyncFramework ? t('web.system.config.enabled') : t('web.system.config.disabled')} />
         </div>
         <div className="config-item">
-          <span>历史数据库</span>
+          <span>{t('web.system.config.historyDb')}</span>
           <strong>{configSummary.historyStorePath}</strong>
         </div>
         <div className="config-item">
-          <span>当前资源规模</span>
-          <strong>{configSummary.nodeCount} 个节点，{configSummary.planCount} 个计划</strong>
+          <span>{t('web.system.config.resourceScale')}</span>
+          <strong>{t('web.system.config.resourceStats', { nodeCount: configSummary.nodeCount, planCount: configSummary.planCount })}</strong>
         </div>
         <div className="config-item">
-          <span>插件系统</span>
-          <StatusBadge tone={configSummary.enablePluginSystem ? 'healthy' : 'muted'} label={configSummary.enablePluginSystem ? '已启用' : '已停用'} />
+          <span>{t('web.system.config.pluginSystem')}</span>
+          <StatusBadge tone={configSummary.enablePluginSystem ? 'healthy' : 'muted'} label={configSummary.enablePluginSystem ? t('web.system.config.enabled') : t('web.system.config.disabled')} />
         </div>
         <div className="config-item">
-          <span>插件目录</span>
+          <span>{t('web.system.config.pluginDir')}</span>
           <strong>{configSummary.pluginDirectory}</strong>
         </div>
       </div>

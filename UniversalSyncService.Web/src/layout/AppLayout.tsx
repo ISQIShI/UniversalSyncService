@@ -4,6 +4,7 @@ import { useAppStore } from '../store/useAppStore.ts';
 import { Sidebar, type NavigationItem } from '../components/layout/Sidebar.tsx';
 import { StatusBadge } from '../components/common/StatusBadge.tsx';
 import { useDocumentTheme } from '../hooks/useTheme.ts';
+import { useI18n } from '../i18n/useI18n.ts';
 
 export function AppLayout() {
   const {
@@ -27,6 +28,7 @@ export function AppLayout() {
   const [apiKeyInput, setApiKeyInput] = useState(apiKey || '');
   const location = useLocation();
   const navigate = useNavigate();
+  const { locale, setLocale, t } = useI18n();
 
   useDocumentTheme(themeMode);
 
@@ -71,23 +73,30 @@ export function AppLayout() {
       <main className="console-main">
         <header className="topbar">
           <div>
-            <span className="eyebrow">控制台</span>
-            <h1>Universal Sync 服务控制台</h1>
+            <span className="eyebrow">{t('web.app.console')}</span>
+            <h1>{t('web.app.title')}</h1>
           </div>
 
           <div className="topbar-right">
-            <StatusBadge tone={health === 'Healthy' ? 'healthy' : 'danger'} label={health === 'Healthy' ? '系统正常' : '系统离线'} />
+            <StatusBadge tone={health === 'Healthy' ? 'healthy' : 'danger'} label={health === 'Healthy' ? t('web.app.status.healthy') : t('web.app.status.offline')} />
             <label className="theme-select-row">
-              <span>主题</span>
+              <span>{t('web.app.language')}</span>
+              <select data-testid="locale-switcher" value={locale} onChange={(event) => setLocale(event.target.value as 'en' | 'zh-CN')}>
+                <option value="en">English</option>
+                <option value="zh-CN">中文</option>
+              </select>
+            </label>
+            <label className="theme-select-row">
+              <span>{t('web.app.theme')}</span>
               <select value={themeMode} onChange={(event) => setThemeMode(event.target.value as 'light' | 'dark' | 'system')}>
-                <option value="light">浅色</option>
-                <option value="dark">深色</option>
-                <option value="system">系统</option>
+                <option value="light">{t('web.app.theme.light')}</option>
+                <option value="dark">{t('web.app.theme.dark')}</option>
+                <option value="system">{t('web.app.theme.system')}</option>
               </select>
             </label>
             <label className="toggle-row">
               <input type="checkbox" checked={liveUpdates} onChange={(event) => setLiveUpdates(event.target.checked)} />
-              <span>实时刷新</span>
+              <span>{t('web.app.liveUpdates')}</span>
             </label>
           </div>
         </header>
@@ -100,7 +109,7 @@ export function AppLayout() {
               type="password"
               value={apiKeyInput}
               onChange={(event) => setApiKeyInput(event.target.value)}
-              placeholder="请输入管理 API Key..."
+              placeholder={t('web.app.auth.placeholder')}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && apiKeyInput) {
                   connect(apiKeyInput);
@@ -108,25 +117,25 @@ export function AppLayout() {
               }}
             />
             <button type="button" className="primary" data-testid="connect-button" onClick={() => connect(apiKeyInput)} disabled={!apiKeyInput}>
-              连接控制台
+              {t('web.app.auth.connect')}
             </button>
             {isConnected && (
               <>
                 <button type="button" onClick={() => fetchConsoleState()} disabled={isBusy}>
-                  立即刷新
+                  {t('web.app.auth.refresh')}
                 </button>
                 <button type="button" onClick={() => {
                   setApiKeyInput('');
                   disconnect();
-                }}>断开连接</button>
+                }}>{t('web.app.auth.disconnect')}</button>
               </>
             )}
           </section>
         ) : (
           <section className="auth-strip auth-strip-auto">
-            <StatusBadge tone="healthy" label="本机免密访问已启用" />
-            <span>当前控制台已启用免密访问。</span>
-            <button type="button" onClick={() => fetchConsoleState()} disabled={!(canUseAnonymousApi || isConnected) || isBusy}>立即刷新</button>
+            <StatusBadge tone="healthy" label={t('web.app.auth.anonymous.title')} />
+            <span>{t('web.app.auth.anonymous.message')}</span>
+            <button type="button" onClick={() => fetchConsoleState()} disabled={!(canUseAnonymousApi || isConnected) || isBusy}>{t('web.app.auth.refresh')}</button>
           </section>
         )}
 

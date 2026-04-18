@@ -2,17 +2,19 @@ import { Panel } from '../components/common/Panel.tsx';
 import { PluginsTable } from '../components/system/PluginsTable.tsx';
 import { SystemConfigPanel } from '../components/system/SystemConfigPanel.tsx';
 import { useAppStore } from '../store/useAppStore.ts';
+import { useI18n } from '../i18n/useI18n.ts';
 
 export function SystemPage() {
   const { configSummary, plugins } = useAppStore();
+  const { t } = useI18n();
 
   return (
     <div className="page-grid system-grid">
-      <Panel title="系统配置" subtitle="运行参数与配置路径">
+      <Panel title={t('web.system.config.title')} subtitle={t('web.system.config.subtitle')}>
         <SystemConfigPanel configSummary={configSummary} />
       </Panel>
 
-      <Panel title="已加载插件" subtitle="当前运行时中的扩展能力">
+      <Panel title={t('web.system.plugins.title')} subtitle={t('web.system.plugins.subtitle')}>
         <PluginsTable plugins={plugins} />
       </Panel>
     </div>
