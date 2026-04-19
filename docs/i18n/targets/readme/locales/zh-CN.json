@@ -1,0 +1,22 @@
+{
+  "readme.title": "Universal Sync Service",
+  "readme.description": "一个无头文件同步服务，支持插件化节点提供者与 Web 管理控制台。",
+  "readme.features.title": "功能特性",
+  "readme.features.syncPlans": "创建、编辑并执行同步计划",
+  "readme.features.nodeProviders": "支持本地文件系统和 OneDrive 节点提供者",
+  "readme.features.webConsole": "在 Web 界面中管理服务状态、计划、节点和系统配置",
+  "readme.setup.title": "快速开始",
+  "readme.setup.prerequisites": "前置条件",
+  "readme.setup.dotnet": "安装 .NET SDK 9.0 或更高版本",
+  "readme.setup.node": "安装 Node.js 20 或更高版本",
+  "readme.setup.install": "安装依赖",
+  "readme.setup.runHost": "运行 Host 服务",
+  "readme.setup.runWeb": "运行 Web 控制台",
+  "readme.setup.buildWeb": "构建 Web 静态资源",
+  "readme.setup.tests": "运行集成测试",
+  "readme.setup.playwright": "运行 Playwright 端到端测试",
+  "readme.testing.title": "测试指南",
+  "readme.testing.description": "详见 [测试指南](docs/TESTING.md) 获取详细的测试指令。",
+  "readme.notes.title": "说明",
+  "readme.notes.generated": "该 README 是基于模板与语言资源生成的。"
+}

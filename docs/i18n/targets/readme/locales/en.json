@@ -1,0 +1,22 @@
+{
+  "readme.title": "Universal Sync Service",
+  "readme.description": "A headless file synchronization service with plugin-based node providers and Web management console.",
+  "readme.features.title": "Features",
+  "readme.features.syncPlans": "Create, edit, and execute synchronization plans",
+  "readme.features.nodeProviders": "Support Local Filesystem and OneDrive node providers",
+  "readme.features.webConsole": "Manage service status, plans, nodes, and system configuration in Web UI",
+  "readme.setup.title": "Setup",
+  "readme.setup.prerequisites": "Prerequisites",
+  "readme.setup.dotnet": "Install .NET SDK 9.0 or newer",
+  "readme.setup.node": "Install Node.js 20 or newer",
+  "readme.setup.install": "Install dependencies",
+  "readme.setup.runHost": "Run host service",
+  "readme.setup.runWeb": "Run Web console",
+  "readme.setup.buildWeb": "Build Web assets",
+  "readme.setup.tests": "Run integration tests",
+  "readme.setup.playwright": "Run Playwright end-to-end tests",
+  "readme.testing.title": "Testing",
+  "readme.testing.description": "See [Testing Guide](docs/TESTING.md) for detailed test instructions.",
+  "readme.notes.title": "Notes",
+  "readme.notes.generated": "This README is generated from template and locale resources."
+}

@@ -1,0 +1,14 @@
+{
+  "target": "testing",
+  "template": "template.md",
+  "localeDir": "locales",
+  "outputs": {
+    "en": "docs/TESTING.md",
+    "zh-CN": "docs/TESTING.zh-CN.md"
+  },
+  "languageLabels": {
+    "en": "English",
+    "zh-CN": "简体中文"
+  },
+  "topLanguageLinks": true
+}
