@@ -3,7 +3,7 @@ import { fallbackLocale, resources, type I18nKey, type LocaleCode } from './gene
 type TranslateParams = Record<string, string | number>;
 
 function isLocaleCode(value: string | null): value is LocaleCode {
-  return value === 'en' || value === 'zh-CN';
+  return value !== null && Object.prototype.hasOwnProperty.call(resources, value);
 }
 
 export function resolveCurrentLocale(): LocaleCode {

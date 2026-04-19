@@ -1,20 +1,25 @@
 import { LocaleCode, fallbackLocale, resources } from './generated/resources';
 
+function isLocaleCode(value: string | null): value is LocaleCode {
+  return value !== null && Object.prototype.hasOwnProperty.call(resources, value);
+}
+
 export function getInitialLocale(): LocaleCode {
   // 1. User override
   const saved = localStorage.getItem('uss_locale');
-  if (saved && (saved === 'en' || saved === 'zh-CN')) {
-    return saved as LocaleCode;
+  if (isLocaleCode(saved)) {
+    return saved;
   }
 
   // 2. Browser language
   if (typeof window !== 'undefined' && window.navigator && window.navigator.language) {
     const browserLang = window.navigator.language;
-    if (browserLang.startsWith('zh')) {
-      return 'zh-CN';
+    if (isLocaleCode(browserLang)) {
+      return browserLang;
     }
-    if (resources[browserLang as LocaleCode]) {
-      return browserLang as LocaleCode;
+
+    if (browserLang.startsWith('zh') && isLocaleCode('zh-CN')) {
+      return 'zh-CN';
     }
   }
 
