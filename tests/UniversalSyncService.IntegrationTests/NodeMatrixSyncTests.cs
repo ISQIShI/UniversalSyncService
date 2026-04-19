@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using System.Text.RegularExpressions;
 using UniversalSyncService.Abstractions.Configuration;
 using UniversalSyncService.Abstractions.SyncManagement;
 using UniversalSyncService.Abstractions.SyncManagement.Tasks;
@@ -14,6 +13,7 @@ using UniversalSyncService.Core.SyncManagement.ConfigNodes;
 using UniversalSyncService.Host.Configuration;
 using UniversalSyncService.Testing;
 using Xunit;
+using OneDriveLaneConfiguration = UniversalSyncService.Testing.OneDriveTestBootstrap.OneDriveLaneConfiguration;
 
 namespace UniversalSyncService.IntegrationTests;
 
@@ -29,7 +29,6 @@ namespace UniversalSyncService.IntegrationTests;
 public sealed class NodeMatrixSyncTests : IAsyncLifetime
 {
     private const string OneDriveTestConfigFileName = "onedrive.test.yaml";
-    private const string PlaceholderClientId = "PLACEHOLDER_CLIENT_ID";
 
     private readonly ILogger<OneDriveGraphClientFactory> _factoryLogger = NullLogger<OneDriveGraphClientFactory>.Instance;
     private readonly ILogger<OneDriveNode> _nodeLogger = NullLogger<OneDriveNode>.Instance;
@@ -37,14 +36,6 @@ public sealed class NodeMatrixSyncTests : IAsyncLifetime
     private TempContentRoot? _testRoot;
 
     private string TestRootPath => _testRoot!.RootPath;
-
-    private sealed record OneDriveLaneConfiguration(
-        string? ClientId,
-        string TenantId,
-        bool EnableOnlineColdAuth,
-        string TemplatePath,
-        string LocalOverridePath,
-        bool LocalOverrideExists);
 
     public Task InitializeAsync()
     {
@@ -357,7 +348,7 @@ public sealed class NodeMatrixSyncTests : IAsyncLifetime
 
     private static async Task<OneDriveLaneConfiguration> GetOnlineWarmAuthLaneConfigurationOrSkipAsync()
     {
-        var configuration = ResolveLaneConfiguration();
+        var configuration = OneDriveTestBootstrap.ResolveLaneConfiguration(OneDriveTestConfigFileName);
 
         Skip.If(string.IsNullOrWhiteSpace(configuration.ClientId),
             "OnlineWarmAuth 前置检查失败：未解析到有效 ClientId（模板/本地覆盖/本地持久化凭据）。");
@@ -378,7 +369,7 @@ public sealed class NodeMatrixSyncTests : IAsyncLifetime
 
     private static OneDriveLaneConfiguration GetOnlineColdAuthLaneConfigurationOrSkip(bool requiresInteractiveConsole)
     {
-        var configuration = ResolveLaneConfiguration();
+        var configuration = OneDriveTestBootstrap.ResolveLaneConfiguration(OneDriveTestConfigFileName);
 
         Skip.If(!configuration.EnableOnlineColdAuth,
             "OnlineColdAuth 默认不自动执行。请在 tests/Config/Local/onedrive.test.yaml 显式设置 EnableOnlineColdAuth: true。");
@@ -395,104 +386,5 @@ public sealed class NodeMatrixSyncTests : IAsyncLifetime
             "OnlineColdAuth 前置检查失败：未解析到有效 ClientId，按设计 Skip。");
 
         return configuration;
-    }
-
-    private static OneDriveLaneConfiguration ResolveLaneConfiguration()
-    {
-        var templatePath = OneDriveTestBootstrap.GetTemplatePath(OneDriveTestConfigFileName);
-        var localOverridePath = OneDriveTestBootstrap.GetLocalOverridePath(OneDriveTestConfigFileName);
-
-        var templateValues = ReadOneDriveConfigValues(templatePath);
-        var localOverrideExists = File.Exists(localOverridePath);
-        var localValues = localOverrideExists
-            ? ReadOneDriveConfigValues(localOverridePath)
-            : (ClientId: (string?)null, TenantId: (string?)null, EnableOnlineColdAuth: (bool?)null);
-
-        var resolvedClientId = NormalizeClientId(templateValues.ClientId);
-        var resolvedTenantId = NormalizeTenantId(templateValues.TenantId) ?? "common";
-        var enableOnlineColdAuth = templateValues.EnableOnlineColdAuth ?? false;
-
-        if (!string.IsNullOrWhiteSpace(localValues.ClientId))
-        {
-            resolvedClientId = NormalizeClientId(localValues.ClientId);
-        }
-
-        if (!string.IsNullOrWhiteSpace(localValues.TenantId))
-        {
-            resolvedTenantId = NormalizeTenantId(localValues.TenantId) ?? resolvedTenantId;
-        }
-
-        if (localValues.EnableOnlineColdAuth.HasValue)
-        {
-            enableOnlineColdAuth = localValues.EnableOnlineColdAuth.Value;
-        }
-
-        var persistedCredentials = OneDriveAppCredentials.LoadCredentials();
-        if (persistedCredentials is not null)
-        {
-            resolvedClientId = NormalizeClientId(persistedCredentials.ClientId);
-            resolvedTenantId = NormalizeTenantId(persistedCredentials.TenantId) ?? resolvedTenantId;
-        }
-
-        return new OneDriveLaneConfiguration(
-            resolvedClientId,
-            resolvedTenantId,
-            enableOnlineColdAuth,
-            templatePath,
-            localOverridePath,
-            localOverrideExists);
-    }
-
-    private static (string? ClientId, string? TenantId, bool? EnableOnlineColdAuth) ReadOneDriveConfigValues(string configPath)
-    {
-        if (!File.Exists(configPath))
-        {
-            return (null, null, null);
-        }
-
-        var content = File.ReadAllText(configPath);
-        var clientId = ReadYamlScalar(content, "ClientId");
-        var tenantId = ReadYamlScalar(content, "TenantId");
-        var enableOnlineColdAuth = ReadYamlBoolean(content, "EnableOnlineColdAuth");
-        return (clientId, tenantId, enableOnlineColdAuth);
-    }
-
-    private static string? ReadYamlScalar(string yamlContent, string key)
-    {
-        var match = Regex.Match(yamlContent, $"{Regex.Escape(key)}\\s*:\\s*\"?(?<value>[^\"\\r\\n#]+)\"?", RegexOptions.IgnoreCase);
-        return match.Success ? match.Groups["value"].Value.Trim() : null;
-    }
-
-    private static bool? ReadYamlBoolean(string yamlContent, string key)
-    {
-        var rawValue = ReadYamlScalar(yamlContent, key);
-        if (string.IsNullOrWhiteSpace(rawValue))
-        {
-            return null;
-        }
-
-        return rawValue.Equals("true", StringComparison.OrdinalIgnoreCase)
-            || rawValue.Equals("1", StringComparison.OrdinalIgnoreCase)
-            || rawValue.Equals("yes", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string? NormalizeClientId(string? rawClientId)
-    {
-        if (string.IsNullOrWhiteSpace(rawClientId))
-        {
-            return null;
-        }
-
-        var normalized = rawClientId.Trim();
-        return normalized.Equals(PlaceholderClientId, StringComparison.OrdinalIgnoreCase)
-            ? null
-            : normalized;
-    }
-
-    private static string? NormalizeTenantId(string? rawTenantId)
-    {
-        return string.IsNullOrWhiteSpace(rawTenantId)
-            ? null
-            : rawTenantId.Trim();
     }
 }

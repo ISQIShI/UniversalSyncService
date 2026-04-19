@@ -9,6 +9,9 @@ namespace UniversalSyncService.Host.IntegrationTests;
 
 public sealed class WebConsoleHttpApiTests : IAsyncLifetime
 {
+    private const string PlansApiRoute = "/api/v1/plans";
+    private const string NodesApiRoute = "/api/v1/nodes";
+
     private TempContentRoot? _contentRoot;
 
     public Task InitializeAsync()
@@ -48,7 +51,7 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
         await using var factory = HostFactory.CreateHost(_contentRoot!.RootPath, enableWebRoot: true);
         var client = factory.CreateClient();
 
-        var response = await client.GetAsync("/api/v1/plans");
+        var response = await client.GetAsync(PlansApiRoute);
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
@@ -61,7 +64,7 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
         await using var factory = HostFactory.CreateHost(_contentRoot!.RootPath, enableWebRoot: true);
         var client = CreateAuthorizedClient(factory);
 
-        var response = await client.GetFromJsonAsync<List<PlanSummaryResponse>>("/api/v1/plans");
+        var response = await client.GetFromJsonAsync<List<PlanSummaryResponse>>(PlansApiRoute);
         Assert.NotNull(response);
         Assert.Single(response);
         Assert.Equal("local-filesystem-test", response[0].Id);
@@ -76,30 +79,23 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
         await using var factory = HostFactory.CreateHost(_contentRoot!.RootPath, enableWebRoot: true);
         var client = CreateAuthorizedClient(factory);
 
-        var request = new CreateOrUpdatePlanRequest(
-            Name: "新增计划",
-            Description: "通过 HTTP API 创建",
-            MasterNodeId: "local-master",
-            SyncItemType: "FileSystem",
-            IsEnabled: true,
-            TriggerType: "Manual",
-            CronExpression: null,
-            IntervalSeconds: null,
-            EnableFileSystemWatcher: false,
-            Slaves:
-            [
-                new PlanSlaveRequest(
-                    SlaveNodeId: "local-slave",
-                    SyncMode: "Bidirectional",
-                    SourcePath: ".",
-                    TargetPath: ".",
-                    EnableDeletionProtection: true,
-                    ConflictResolutionStrategy: null,
-                    Filters: ["*.md"],
-                    Exclusions: [".git/"])
-            ]);
+        var request = CreatePlanRequest(
+            name: "新增计划",
+            description: "通过 HTTP API 创建",
+            isEnabled: true,
+            triggerType: "Manual",
+            intervalSeconds: null,
+            slave: CreatePlanSlaveRequest(
+                slaveNodeId: "local-slave",
+                syncMode: "Bidirectional",
+                sourcePath: ".",
+                targetPath: ".",
+                enableDeletionProtection: true,
+                conflictResolutionStrategy: null,
+                filters: ["*.md"],
+                exclusions: [".git/"]));
 
-        var createResponse = await client.PostAsJsonAsync("/api/v1/plans", request);
+        var createResponse = await client.PostAsJsonAsync(PlansApiRoute, request);
         createResponse.EnsureSuccessStatusCode();
 
         var createdPlan = await createResponse.Content.ReadFromJsonAsync<PlanDetailResponse>();
@@ -108,7 +104,7 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
         Assert.Single(createdPlan.Slaves);
         Assert.Contains("*.md", createdPlan.Slaves[0].Filters);
 
-        var plans = await client.GetFromJsonAsync<List<PlanSummaryResponse>>("/api/v1/plans");
+        var plans = await client.GetFromJsonAsync<List<PlanSummaryResponse>>(PlansApiRoute);
         Assert.NotNull(plans);
         Assert.Equal(2, plans.Count);
     }
@@ -122,30 +118,23 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
         await using var factory = HostFactory.CreateHost(_contentRoot!.RootPath, enableWebRoot: true);
         var client = CreateAuthorizedClient(factory);
 
-        var request = new CreateOrUpdatePlanRequest(
-            Name: "已更新计划",
-            Description: "更新后的计划描述",
-            MasterNodeId: "local-master",
-            SyncItemType: "FileSystem",
-            IsEnabled: false,
-            TriggerType: "Scheduled",
-            CronExpression: null,
-            IntervalSeconds: 300,
-            EnableFileSystemWatcher: false,
-            Slaves:
-            [
-                new PlanSlaveRequest(
-                    SlaveNodeId: "local-slave",
-                    SyncMode: "Push",
-                    SourcePath: "docs",
-                    TargetPath: "backup",
-                    EnableDeletionProtection: false,
-                    ConflictResolutionStrategy: "KeepNewer",
-                    Filters: ["*.txt", "*.md"],
-                    Exclusions: ["bin/", "obj/"])
-            ]);
+        var request = CreatePlanRequest(
+            name: "已更新计划",
+            description: "更新后的计划描述",
+            isEnabled: false,
+            triggerType: "Scheduled",
+            intervalSeconds: 300,
+            slave: CreatePlanSlaveRequest(
+                slaveNodeId: "local-slave",
+                syncMode: "Push",
+                sourcePath: "docs",
+                targetPath: "backup",
+                enableDeletionProtection: false,
+                conflictResolutionStrategy: "KeepNewer",
+                filters: ["*.txt", "*.md"],
+                exclusions: ["bin/", "obj/"]));
 
-        var updateResponse = await client.PutAsJsonAsync("/api/v1/plans/local-filesystem-test", request);
+        var updateResponse = await client.PutAsJsonAsync($"{PlansApiRoute}/local-filesystem-test", request);
         updateResponse.EnsureSuccessStatusCode();
 
         var updatedPlan = await updateResponse.Content.ReadFromJsonAsync<PlanDetailResponse>();
@@ -168,38 +157,31 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
         await using var factory = HostFactory.CreateHost(_contentRoot!.RootPath, enableWebRoot: true);
         var client = CreateAuthorizedClient(factory);
 
-        var request = new CreateOrUpdatePlanRequest(
-            Name: "待删除计划",
-            Description: null,
-            MasterNodeId: "local-master",
-            SyncItemType: "FileSystem",
-            IsEnabled: true,
-            TriggerType: "Manual",
-            CronExpression: null,
-            IntervalSeconds: null,
-            EnableFileSystemWatcher: false,
-            Slaves:
-            [
-                new PlanSlaveRequest(
-                    SlaveNodeId: "local-slave",
-                    SyncMode: "Bidirectional",
-                    SourcePath: ".",
-                    TargetPath: ".",
-                    EnableDeletionProtection: true,
-                    ConflictResolutionStrategy: null,
-                    Filters: [],
-                    Exclusions: [])
-            ]);
+        var request = CreatePlanRequest(
+            name: "待删除计划",
+            description: null,
+            isEnabled: true,
+            triggerType: "Manual",
+            intervalSeconds: null,
+            slave: CreatePlanSlaveRequest(
+                slaveNodeId: "local-slave",
+                syncMode: "Bidirectional",
+                sourcePath: ".",
+                targetPath: ".",
+                enableDeletionProtection: true,
+                conflictResolutionStrategy: null,
+                filters: [],
+                exclusions: []));
 
-        var createResponse = await client.PostAsJsonAsync("/api/v1/plans", request);
+        var createResponse = await client.PostAsJsonAsync(PlansApiRoute, request);
         createResponse.EnsureSuccessStatusCode();
         var createdPlan = await createResponse.Content.ReadFromJsonAsync<PlanDetailResponse>();
         Assert.NotNull(createdPlan);
 
-        var deleteResponse = await client.DeleteAsync($"/api/v1/plans/{createdPlan.Id}");
+        var deleteResponse = await client.DeleteAsync($"{PlansApiRoute}/{createdPlan.Id}");
         Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
 
-        var detailResponse = await client.GetAsync($"/api/v1/plans/{createdPlan.Id}");
+        var detailResponse = await client.GetAsync($"{PlansApiRoute}/{createdPlan.Id}");
         Assert.Equal(HttpStatusCode.NotFound, detailResponse.StatusCode);
     }
 
@@ -265,26 +247,23 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
         await using var factory = HostFactory.CreateHost(_contentRoot!.RootPath, enableWebRoot: true);
         var client = CreateAuthorizedClient(factory);
 
-        var initialNodes = await client.GetFromJsonAsync<List<NodeSummaryResponse>>("/api/v1/nodes");
+        var initialNodes = await client.GetFromJsonAsync<List<NodeSummaryResponse>>(NodesApiRoute);
         Assert.NotNull(initialNodes);
         Assert.Contains(initialNodes, node => node.Id == "host-local" && node.IsImplicitHostNode);
         Assert.Contains(initialNodes, node => node.Id == "local-slave" && Path.IsPathFullyQualified(node.RootPath ?? string.Empty));
 
-        var createRequest = new CreateOrUpdateNodeRequest(
-            Id: "local-archive",
-            Name: "归档节点",
-            NodeType: "Local",
-            IsEnabled: true,
-            ConnectionSettings: new Dictionary<string, string>
-            {
-                ["RootPath"] = Path.Combine(_contentRoot!.RootPath, "archive").Replace("\\", "/")
-            },
-            CustomOptions: new Dictionary<string, string>
+        var createRequest = CreateNodeRequest(
+            id: "local-archive",
+            name: "归档节点",
+            nodeType: "Local",
+            isEnabled: true,
+            rootPath: Path.Combine(_contentRoot!.RootPath, "archive"),
+            customOptions: new Dictionary<string, string>
             {
                 ["Color"] = "Blue"
             });
 
-        var createResponse = await client.PostAsJsonAsync("/api/v1/nodes", createRequest);
+        var createResponse = await client.PostAsJsonAsync(NodesApiRoute, createRequest);
         createResponse.EnsureSuccessStatusCode();
         var createdNode = await createResponse.Content.ReadFromJsonAsync<NodeDetailResponse>();
         Assert.NotNull(createdNode);
@@ -294,21 +273,18 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
         Assert.True(Path.IsPathFullyQualified(createdNode.RootPath ?? string.Empty));
         Assert.True(Path.IsPathFullyQualified(createdNode.ConnectionSettings["RootPath"]));
 
-        var updateRequest = new CreateOrUpdateNodeRequest(
-            Id: null,
-            Name: "归档节点-已更新",
-            NodeType: "Local",
-            IsEnabled: false,
-            ConnectionSettings: new Dictionary<string, string>
-            {
-                ["RootPath"] = Path.Combine(_contentRoot!.RootPath, "archive-updated").Replace("\\", "/")
-            },
-            CustomOptions: new Dictionary<string, string>
+        var updateRequest = CreateNodeRequest(
+            id: null,
+            name: "归档节点-已更新",
+            nodeType: "Local",
+            isEnabled: false,
+            rootPath: Path.Combine(_contentRoot!.RootPath, "archive-updated"),
+            customOptions: new Dictionary<string, string>
             {
                 ["Tier"] = "Cold"
             });
 
-        var updateResponse = await client.PutAsJsonAsync("/api/v1/nodes/local-archive", updateRequest);
+        var updateResponse = await client.PutAsJsonAsync($"{NodesApiRoute}/local-archive", updateRequest);
         updateResponse.EnsureSuccessStatusCode();
         var updatedNode = await updateResponse.Content.ReadFromJsonAsync<NodeDetailResponse>();
         Assert.NotNull(updatedNode);
@@ -318,10 +294,10 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
         Assert.True(Path.IsPathFullyQualified(updatedNode.RootPath ?? string.Empty));
         Assert.True(Path.IsPathFullyQualified(updatedNode.ConnectionSettings["RootPath"]));
 
-        var deleteResponse = await client.DeleteAsync("/api/v1/nodes/local-archive");
+        var deleteResponse = await client.DeleteAsync($"{NodesApiRoute}/local-archive");
         Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
 
-        var deletedNodeResponse = await client.GetAsync("/api/v1/nodes/local-archive");
+        var deletedNodeResponse = await client.GetAsync($"{NodesApiRoute}/local-archive");
         Assert.Equal(HttpStatusCode.NotFound, deletedNodeResponse.StatusCode);
     }
 
@@ -334,33 +310,94 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
         await using var factory = HostFactory.CreateHost(_contentRoot!.RootPath, enableWebRoot: true);
         var client = CreateAuthorizedClient(factory);
 
-        var mismatchedRequest = new CreateOrUpdateNodeRequest(
-            Id: "other-node",
-            Name: "不匹配节点",
-            NodeType: "Local",
-            IsEnabled: true,
-            ConnectionSettings: new Dictionary<string, string>
-            {
-                ["RootPath"] = Path.Combine(_contentRoot!.RootPath, "other").Replace("\\", "/")
-            },
-            CustomOptions: new Dictionary<string, string>());
+        var mismatchedRequest = CreateNodeRequest(
+            id: "other-node",
+            name: "不匹配节点",
+            nodeType: "Local",
+            isEnabled: true,
+            rootPath: Path.Combine(_contentRoot!.RootPath, "other"),
+            customOptions: new Dictionary<string, string>());
 
-        var mismatchResponse = await client.PutAsJsonAsync("/api/v1/nodes/local-master", mismatchedRequest);
+        var mismatchResponse = await client.PutAsJsonAsync($"{NodesApiRoute}/local-master", mismatchedRequest);
         Assert.Equal(HttpStatusCode.BadRequest, mismatchResponse.StatusCode);
 
-        var implicitRequest = new CreateOrUpdateNodeRequest(
-            Id: "host-local",
-            Name: "宿主节点",
-            NodeType: "Local",
-            IsEnabled: true,
-            ConnectionSettings: new Dictionary<string, string>
-            {
-                ["RootPath"] = Path.Combine(_contentRoot!.RootPath, "host").Replace("\\", "/")
-            },
-            CustomOptions: new Dictionary<string, string>());
+        var implicitRequest = CreateNodeRequest(
+            id: "host-local",
+            name: "宿主节点",
+            nodeType: "Local",
+            isEnabled: true,
+            rootPath: Path.Combine(_contentRoot!.RootPath, "host"),
+            customOptions: new Dictionary<string, string>());
 
-        var implicitResponse = await client.PutAsJsonAsync("/api/v1/nodes/local-master", implicitRequest);
+        var implicitResponse = await client.PutAsJsonAsync($"{NodesApiRoute}/local-master", implicitRequest);
         Assert.Equal(HttpStatusCode.BadRequest, implicitResponse.StatusCode);
+    }
+
+    private static CreateOrUpdatePlanRequest CreatePlanRequest(
+        string name,
+        string? description,
+        bool isEnabled,
+        string triggerType,
+        double? intervalSeconds,
+        PlanSlaveRequest slave)
+    {
+        return new CreateOrUpdatePlanRequest(
+            Name: name,
+            Description: description,
+            MasterNodeId: "local-master",
+            SyncItemType: "FileSystem",
+            IsEnabled: isEnabled,
+            TriggerType: triggerType,
+            CronExpression: null,
+            IntervalSeconds: intervalSeconds,
+            EnableFileSystemWatcher: false,
+            Slaves: [slave]);
+    }
+
+    private static PlanSlaveRequest CreatePlanSlaveRequest(
+        string slaveNodeId,
+        string syncMode,
+        string? sourcePath,
+        string? targetPath,
+        bool enableDeletionProtection,
+        string? conflictResolutionStrategy,
+        IReadOnlyList<string> filters,
+        IReadOnlyList<string> exclusions)
+    {
+        return new PlanSlaveRequest(
+            SlaveNodeId: slaveNodeId,
+            SyncMode: syncMode,
+            SourcePath: sourcePath,
+            TargetPath: targetPath,
+            EnableDeletionProtection: enableDeletionProtection,
+            ConflictResolutionStrategy: conflictResolutionStrategy,
+            Filters: filters,
+            Exclusions: exclusions);
+    }
+
+    private static CreateOrUpdateNodeRequest CreateNodeRequest(
+        string? id,
+        string name,
+        string nodeType,
+        bool isEnabled,
+        string rootPath,
+        Dictionary<string, string>? customOptions)
+    {
+        return new CreateOrUpdateNodeRequest(
+            Id: id,
+            Name: name,
+            NodeType: nodeType,
+            IsEnabled: isEnabled,
+            ConnectionSettings: CreateRootConnectionSettings(rootPath),
+            CustomOptions: customOptions);
+    }
+
+    private static Dictionary<string, string> CreateRootConnectionSettings(string rootPath)
+    {
+        return new Dictionary<string, string>
+        {
+            ["RootPath"] = rootPath.Replace("\\", "/")
+        };
     }
 
     private static HttpClient CreateAuthorizedClient(WebApplicationFactory<Program> factory)

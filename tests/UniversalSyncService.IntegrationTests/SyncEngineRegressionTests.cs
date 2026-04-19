@@ -59,45 +59,23 @@ public sealed class SyncEngineRegressionTests
     public async Task ExecuteAsync_ShouldDeleteRemoteUsingGenericNodeContract()
     {
         // Arrange
-        var masterConfig = CreateNodeConfiguration("master", "Local");
-        var slaveConfig = CreateNodeConfiguration("slave", "OneDrive");
-        var masterNode = new TestNode("master", NodeType.Local);
-        var slaveNode = new TestNode("slave", NodeType.Cloud);
-        var runner = new FileSystemSyncTaskRunner(
-            new NodeProviderRegistry([new TestNodeProvider(masterConfig, masterNode), new TestNodeProvider(slaveConfig, slaveNode)]),
-            new StubSyncAlgorithmEngine("obsolete.txt", SyncDecision.DeleteRemote),
-            new StubConflictResolver(),
-            new InMemoryHistoryManager(
-                previousEntries:
-                [
-                    CreateHistoryEntry(
-                        planId: "plan-1",
-                        nodeId: slaveConfig.Id,
-                        metadata: CreateMetadata("obsolete.txt", 5, DateTimeOffset.UtcNow, checksum: null),
-                        state: FileHistoryState.Exists)
-                ]),
-            NullLogger<FileSystemSyncTaskRunner>.Instance);
-
-        var task = new SyncTask(
-            id: "task-1",
+        var scenario = CreateGenericDeleteContractScenario(
+            taskId: "task-1",
             planId: "plan-1",
-            masterNode: masterConfig,
-            slaveNode: slaveConfig,
+            masterProviderType: "Local",
+            slaveProviderType: "OneDrive",
+            masterNodeType: NodeType.Local,
+            slaveNodeType: NodeType.Cloud,
             syncMode: SyncMode.PushAndDelete,
-            syncItemType: "FileSystem",
-            sourcePath: null,
-            targetPath: null,
-            conflictResolutionStrategy: ConflictResolutionStrategy.Manual,
-            executionRequirement: TaskExecutionRequirement.Ready,
-            executeCoreAsync: (syncTask, ct) => runner.ExecuteAsync(syncTask, ct),
-            logger: NullLogger<SyncTask>.Instance);
+            deleteDecision: SyncDecision.DeleteRemote,
+            historyNodeId: "slave");
 
         // Act
-        var result = await task.ExecuteAsync(CancellationToken.None);
+        var result = await scenario.Task.ExecuteAsync(CancellationToken.None);
 
         // Assert
         Assert.Equal(SyncTaskResult.Success, result);
-        Assert.Equal(["obsolete.txt"], slaveNode.DeletedPaths);
+        Assert.Equal(["obsolete.txt"], scenario.SlaveNode.DeletedPaths);
     }
 
     [Fact]
@@ -247,45 +225,23 @@ public sealed class SyncEngineRegressionTests
     public async Task ExecuteAsync_ShouldDeleteLocalUsingGenericNodeContract()
     {
         // Arrange
-        var masterConfig = CreateNodeConfiguration("master", "OneDrive");
-        var slaveConfig = CreateNodeConfiguration("slave", "Local");
-        var masterNode = new TestNode("master", NodeType.Cloud);
-        var slaveNode = new TestNode("slave", NodeType.Local);
-        var runner = new FileSystemSyncTaskRunner(
-            new NodeProviderRegistry([new TestNodeProvider(masterConfig, masterNode), new TestNodeProvider(slaveConfig, slaveNode)]),
-            new StubSyncAlgorithmEngine("obsolete.txt", SyncDecision.DeleteLocal),
-            new StubConflictResolver(),
-            new InMemoryHistoryManager(
-                previousEntries:
-                [
-                    CreateHistoryEntry(
-                        planId: "plan-1",
-                        nodeId: masterConfig.Id,
-                        metadata: CreateMetadata("obsolete.txt", 5, DateTimeOffset.UtcNow, checksum: null),
-                        state: FileHistoryState.Exists)
-                ]),
-            NullLogger<FileSystemSyncTaskRunner>.Instance);
-
-        var task = new SyncTask(
-            id: "task-delete-local",
+        var scenario = CreateGenericDeleteContractScenario(
+            taskId: "task-delete-local",
             planId: "plan-1",
-            masterNode: masterConfig,
-            slaveNode: slaveConfig,
+            masterProviderType: "OneDrive",
+            slaveProviderType: "Local",
+            masterNodeType: NodeType.Cloud,
+            slaveNodeType: NodeType.Local,
             syncMode: SyncMode.PullAndDelete,
-            syncItemType: "FileSystem",
-            sourcePath: null,
-            targetPath: null,
-            conflictResolutionStrategy: ConflictResolutionStrategy.Manual,
-            executionRequirement: TaskExecutionRequirement.Ready,
-            executeCoreAsync: (syncTask, ct) => runner.ExecuteAsync(syncTask, ct),
-            logger: NullLogger<SyncTask>.Instance);
+            deleteDecision: SyncDecision.DeleteLocal,
+            historyNodeId: "master");
 
         // Act
-        var result = await task.ExecuteAsync(CancellationToken.None);
+        var result = await scenario.Task.ExecuteAsync(CancellationToken.None);
 
         // Assert
         Assert.Equal(SyncTaskResult.Success, result);
-        Assert.Equal(["obsolete.txt"], masterNode.DeletedPaths);
+        Assert.Equal(["obsolete.txt"], scenario.MasterNode.DeletedPaths);
     }
 
     [Fact]
@@ -400,21 +356,19 @@ public sealed class SyncEngineRegressionTests
     {
         // Arrange
         var task = new TestSyncTask("task-1", "plan-1");
-        var taskGenerator = new TestSyncTaskGenerator([task]);
-        var taskExecutor = new BlockingTaskExecutor();
-        var engine = new SyncEngine(taskGenerator, taskExecutor, NullLogger<SyncEngine>.Instance);
+        var harness = CreateSyncEngineHarness(task);
 
         // Act
-        var execution = engine.ExecuteTaskAsync(task, CancellationToken.None);
-        await taskExecutor.WaitForTaskStartedAsync("task-1");
-        await WaitUntilAsync(() => engine.ActiveTasks.Any(active => active.Id == "task-1"));
+        var execution = harness.Engine.ExecuteTaskAsync(task, CancellationToken.None);
+        await harness.TaskExecutor.WaitForTaskStartedAsync("task-1");
+        await WaitUntilAsync(() => harness.Engine.ActiveTasks.Any(active => active.Id == "task-1"));
 
-        await engine.CancelTaskAsync("task-1");
+        await harness.Engine.CancelTaskAsync("task-1");
         var result = await execution;
 
         // Assert
         Assert.Equal(SyncTaskResult.Cancelled, result);
-        Assert.Empty(engine.ActiveTasks);
+        Assert.Empty(harness.Engine.ActiveTasks);
     }
 
     [Fact]
@@ -423,29 +377,27 @@ public sealed class SyncEngineRegressionTests
         // Arrange
         var task1 = new TestSyncTask("task-1", "plan-1");
         var task2 = new TestSyncTask("task-2", "plan-1");
-        var taskGenerator = new TestSyncTaskGenerator([task1, task2]);
-        var taskExecutor = new BlockingTaskExecutor();
-        var engine = new SyncEngine(taskGenerator, taskExecutor, NullLogger<SyncEngine>.Instance);
+        var harness = CreateSyncEngineHarness(task1, task2);
 
         // Act
-        var execution = engine.ExecutePlanAsync(CreatePlan("plan-1"), CancellationToken.None);
-        await taskExecutor.WaitForTaskStartedAsync("task-1");
-        await taskExecutor.WaitForTaskStartedAsync("task-2");
+        var execution = harness.Engine.ExecutePlanAsync(CreatePlan("plan-1"), CancellationToken.None);
+        await harness.TaskExecutor.WaitForTaskStartedAsync("task-1");
+        await harness.TaskExecutor.WaitForTaskStartedAsync("task-2");
 
-        await engine.CancelPlanAsync("plan-1");
+        await harness.Engine.CancelPlanAsync("plan-1");
         var results = await execution;
 
         // Assert
         Assert.Equal(2, results.Count);
         Assert.All(results.Values, result => Assert.Equal(SyncTaskResult.Cancelled, result));
-        Assert.Empty(engine.ActiveTasks);
+        Assert.Empty(harness.Engine.ActiveTasks);
     }
 
     [Fact]
     public async Task PauseExecution_ShouldBlockStartUntilResumeExecution()
     {
         // Arrange
-        var executor = new SyncTaskExecutor(new TestConfigurationManagementService(), NullLogger<SyncTaskExecutor>.Instance);
+        var executor = CreateSyncTaskExecutor();
         var task = new ProgressReportingTask("task-pause", "plan-pause");
 
         await executor.PauseExecution();
@@ -468,7 +420,7 @@ public sealed class SyncEngineRegressionTests
     public async Task ExecuteAsync_ShouldNotAccumulateProgressSubscriptionsAcrossRuns()
     {
         // Arrange
-        var executor = new SyncTaskExecutor(new TestConfigurationManagementService(), NullLogger<SyncTaskExecutor>.Instance);
+        var executor = CreateSyncTaskExecutor();
         var task = new ProgressReportingTask("task-progress", "plan-progress");
         var progressEventCount = 0;
         executor.OnTaskProgressChanged += (_, _) => Interlocked.Increment(ref progressEventCount);
@@ -499,6 +451,70 @@ public sealed class SyncEngineRegressionTests
                 new SyncPlanSlaveConfiguration("slave", SyncMode.Bidirectional)
             ],
             new SyncSchedule(SyncTriggerType.Manual));
+    }
+
+    private static SyncTaskExecutor CreateSyncTaskExecutor()
+    {
+        return new SyncTaskExecutor(new TestConfigurationManagementService(), NullLogger<SyncTaskExecutor>.Instance);
+    }
+
+    private static SyncEngineHarness CreateSyncEngineHarness(params ISyncTask[] tasks)
+    {
+        var taskGenerator = new TestSyncTaskGenerator(tasks);
+        var taskExecutor = new BlockingTaskExecutor();
+        var engine = new SyncEngine(taskGenerator, taskExecutor, NullLogger<SyncEngine>.Instance);
+        return new SyncEngineHarness(engine, taskExecutor);
+    }
+
+    private static GenericDeleteContractScenario CreateGenericDeleteContractScenario(
+        string taskId,
+        string planId,
+        string masterProviderType,
+        string slaveProviderType,
+        NodeType masterNodeType,
+        NodeType slaveNodeType,
+        SyncMode syncMode,
+        SyncDecision deleteDecision,
+        string historyNodeId)
+    {
+        const string path = "obsolete.txt";
+
+        var masterConfig = CreateNodeConfiguration("master", masterProviderType);
+        var slaveConfig = CreateNodeConfiguration("slave", slaveProviderType);
+        var masterNode = new TestNode("master", masterNodeType);
+        var slaveNode = new TestNode("slave", slaveNodeType);
+        var historyManager = new InMemoryHistoryManager(
+            previousEntries:
+            [
+                CreateHistoryEntry(
+                    planId: planId,
+                    nodeId: historyNodeId,
+                    metadata: CreateMetadata(path, 5, DateTimeOffset.UtcNow, checksum: null),
+                    state: FileHistoryState.Exists)
+            ]);
+
+        var runner = new FileSystemSyncTaskRunner(
+            new NodeProviderRegistry([new TestNodeProvider(masterConfig, masterNode), new TestNodeProvider(slaveConfig, slaveNode)]),
+            new StubSyncAlgorithmEngine(path, deleteDecision),
+            new StubConflictResolver(),
+            historyManager,
+            NullLogger<FileSystemSyncTaskRunner>.Instance);
+
+        var task = new SyncTask(
+            id: taskId,
+            planId: planId,
+            masterNode: masterConfig,
+            slaveNode: slaveConfig,
+            syncMode: syncMode,
+            syncItemType: "FileSystem",
+            sourcePath: null,
+            targetPath: null,
+            conflictResolutionStrategy: ConflictResolutionStrategy.Manual,
+            executionRequirement: TaskExecutionRequirement.Ready,
+            executeCoreAsync: (syncTask, ct) => runner.ExecuteAsync(syncTask, ct),
+            logger: NullLogger<SyncTask>.Instance);
+
+        return new GenericDeleteContractScenario(task, masterNode, slaveNode);
     }
 
     private static async Task WaitUntilAsync(Func<bool> predicate, int timeoutMs = 5000)
@@ -551,6 +567,10 @@ public sealed class SyncEngineRegressionTests
             new TestHostEnvironment(contentRoot),
             NullLogger<SyncHistoryManager>.Instance);
     }
+
+    private sealed record SyncEngineHarness(SyncEngine Engine, BlockingTaskExecutor TaskExecutor);
+
+    private sealed record GenericDeleteContractScenario(SyncTask Task, TestNode MasterNode, TestNode SlaveNode);
 
     private sealed class StubSyncAlgorithmEngine(string path, SyncDecision decision) : ISyncAlgorithmEngine
     {
