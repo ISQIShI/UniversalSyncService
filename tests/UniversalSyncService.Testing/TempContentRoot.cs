@@ -1,3 +1,5 @@
+using Microsoft.Data.Sqlite;
+
 namespace UniversalSyncService.Testing;
 
 /// <summary>
@@ -51,6 +53,8 @@ public sealed class TempContentRoot : IAsyncDisposable
         {
             try
             {
+                // 兜底清理当前进程内 SQLite 连接池，避免历史库句柄阻塞临时目录删除。
+                SqliteConnection.ClearAllPools();
                 Directory.Delete(_rootPath, recursive: true);
                 return;
             }

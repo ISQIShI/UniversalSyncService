@@ -14,7 +14,7 @@ namespace UniversalSyncService.Core.SyncManagement.History;
 /// 基于 SQLite 的同步历史管理器。
 /// 这里保留了对旧 JSON 文件的自动迁移，避免已有测试数据丢失。
 /// </summary>
-public sealed class SyncHistoryManager : ISyncHistoryManager
+public sealed class SyncHistoryManager : ISyncHistoryManager, IDisposable, IAsyncDisposable
 {
     private static readonly JsonSerializerOptions LegacyJsonOptions = new()
     {
@@ -26,7 +26,11 @@ public sealed class SyncHistoryManager : ISyncHistoryManager
     private readonly IHostEnvironment _hostEnvironment;
     private readonly ILogger<SyncHistoryManager> _logger;
     private readonly SemaphoreSlim _initializationLock = new(1, 1);
+    private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private volatile bool _isInitialized;
+    private volatile bool _isDisposed;
+    private string? _historyStorePath;
+    private string? _connectionString;
 
     public SyncHistoryManager(
         IConfigurationManagementService configurationManagementService,
@@ -40,6 +44,7 @@ public sealed class SyncHistoryManager : ISyncHistoryManager
 
     public async Task<long> GetLatestVersionAsync(string planId)
     {
+        ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(planId);
         await EnsureDatabaseReadyAsync(CancellationToken.None);
 
@@ -53,6 +58,7 @@ public sealed class SyncHistoryManager : ISyncHistoryManager
 
     public async Task<IReadOnlyList<SyncHistoryEntry>> GetPreviousSyncHistoryAsync(string planId, string nodeId)
     {
+        ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(planId);
         ArgumentNullException.ThrowIfNull(nodeId);
         await EnsureDatabaseReadyAsync(CancellationToken.None);
@@ -75,6 +81,7 @@ ORDER BY SyncVersion DESC, MetadataPath ASC;";
 
     public async Task<SyncHistoryEntry?> GetFileHistoryAsync(string planId, string nodeId, string filePath)
     {
+        ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(planId);
         ArgumentNullException.ThrowIfNull(nodeId);
         ArgumentNullException.ThrowIfNull(filePath);
@@ -100,6 +107,7 @@ LIMIT 1;";
 
     public async Task SaveHistoryAsync(IEnumerable<SyncHistoryEntry> entries)
     {
+        ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(entries);
         await EnsureDatabaseReadyAsync(CancellationToken.None);
 
@@ -130,6 +138,7 @@ LIMIT 1;";
 
     public async Task CleanupOldHistoryAsync(string planId, int keepVersions)
     {
+        ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(planId);
         await EnsureDatabaseReadyAsync(CancellationToken.None);
 
@@ -141,6 +150,7 @@ LIMIT 1;";
 
     public async Task DeletePlanHistoryAsync(string planId)
     {
+        ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(planId);
         await EnsureDatabaseReadyAsync(CancellationToken.None);
 
@@ -160,6 +170,7 @@ LIMIT 1;";
 
     public async Task<IReadOnlyList<SyncHistoryEntry>> GetRecentHistoryAsync(string? planId, int limit)
     {
+        ThrowIfDisposed();
         await EnsureDatabaseReadyAsync(CancellationToken.None);
 
         await using var connection = await OpenConnectionAsync(CancellationToken.None);
@@ -179,8 +190,55 @@ LIMIT $limit;";
         return await ReadEntriesAsync(command, CancellationToken.None);
     }
 
+    public void Dispose()
+    {
+        DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        await _disposeLock.WaitAsync(CancellationToken.None);
+        try
+        {
+            if (_isDisposed)
+            {
+                return;
+            }
+
+            // 关闭前显式做一次 WAL checkpoint，减少 -wal/-shm 文件残留与锁持有窗口。
+            if (_isInitialized)
+            {
+                try
+                {
+                    await using var connection = await OpenConnectionAsync(CancellationToken.None);
+                    await CheckpointWalAsync(connection, CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "SyncHistoryManager 释放阶段执行 WAL checkpoint 失败，将继续释放连接池。");
+                }
+            }
+
+            // 避免连接池在测试进程内继续持有 SQLite 句柄，阻塞临时目录 teardown。
+            SqliteConnection.ClearAllPools();
+
+            _isDisposed = true;
+        }
+        finally
+        {
+            _disposeLock.Release();
+        }
+    }
+
     private async Task EnsureDatabaseReadyAsync(CancellationToken cancellationToken)
     {
+        ThrowIfDisposed();
+
         if (_isInitialized)
         {
             return;
@@ -194,7 +252,7 @@ LIMIT $limit;";
                 return;
             }
 
-            var databasePath = ResolveHistoryStorePath();
+            var databasePath = EnsureHistoryStorePath();
             var directory = Path.GetDirectoryName(databasePath);
             if (!string.IsNullOrWhiteSpace(directory))
             {
@@ -220,7 +278,8 @@ LIMIT $limit;";
 
     private async Task<SqliteConnection> OpenConnectionAsync(CancellationToken cancellationToken)
     {
-        var connection = new SqliteConnection($"Data Source={ResolveHistoryStorePath()}");
+        var connectionString = EnsureConnectionString();
+        var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
         return connection;
     }
@@ -229,6 +288,13 @@ LIMIT $limit;";
     {
         await using var command = connection.CreateCommand();
         command.CommandText = "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;";
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task CheckpointWalAsync(SqliteConnection connection, CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA wal_checkpoint(TRUNCATE);";
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -378,12 +444,42 @@ WHERE PlanId = $planId
         _logger.LogInformation("已完成同步历史从 JSON 到 SQLite 的迁移。备份文件={BackupPath}", backupPath);
     }
 
-    private string ResolveHistoryStorePath()
+    private string EnsureHistoryStorePath()
     {
+        if (!string.IsNullOrWhiteSpace(_historyStorePath))
+        {
+            return _historyStorePath;
+        }
+
         var configuredPath = _configurationManagementService.GetSyncOptions().HistoryStorePath;
-        return Path.IsPathRooted(configuredPath)
+        _historyStorePath = Path.IsPathRooted(configuredPath)
             ? configuredPath
             : Path.GetFullPath(Path.Combine(_hostEnvironment.ContentRootPath, configuredPath));
+
+        return _historyStorePath;
+    }
+
+    private string EnsureConnectionString()
+    {
+        if (!string.IsNullOrWhiteSpace(_connectionString))
+        {
+            return _connectionString;
+        }
+
+        var builder = new SqliteConnectionStringBuilder
+        {
+            DataSource = EnsureHistoryStorePath(),
+            Mode = SqliteOpenMode.ReadWriteCreate,
+            Pooling = false
+        };
+
+        _connectionString = builder.ToString();
+        return _connectionString;
+    }
+
+    private void ThrowIfDisposed()
+    {
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
     }
 
     private static string? ParseNullableString(string value)
