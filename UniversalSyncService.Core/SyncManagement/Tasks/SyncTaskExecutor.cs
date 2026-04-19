@@ -43,9 +43,10 @@ public sealed class SyncTaskExecutor : ISyncTaskExecutor
         ArgumentNullException.ThrowIfNull(task);
 
         await WaitWhilePausedAsync(cancellationToken);
+        Action<ISyncTask, ISyncTaskProgress>? progressHandler = null;
         try
         {
-            Subscribe(task, progress);
+            progressHandler = Subscribe(task, progress);
             OnTaskStarted?.Invoke(task);
             var result = await task.ExecuteAsync(cancellationToken);
             OnTaskCompleted?.Invoke(task, result);
@@ -61,6 +62,13 @@ public sealed class SyncTaskExecutor : ISyncTaskExecutor
             _logger.LogError(ex, "同步任务执行失败：{TaskId}", task.Id);
             OnTaskFailed?.Invoke(task, ex);
             return SyncTaskResult.Failed;
+        }
+        finally
+        {
+            if (progressHandler is not null)
+            {
+                task.OnProgressChanged -= progressHandler;
+            }
         }
     }
 
@@ -127,9 +135,10 @@ public sealed class SyncTaskExecutor : ISyncTaskExecutor
         return Task.CompletedTask;
     }
 
-    private void Subscribe(ISyncTask task, IProgress<ISyncTaskProgress>? progress)
+    private Action<ISyncTask, ISyncTaskProgress> Subscribe(ISyncTask task, IProgress<ISyncTaskProgress>? progress)
     {
         task.OnProgressChanged += HandleProgressChanged;
+        return HandleProgressChanged;
 
         void HandleProgressChanged(ISyncTask sourceTask, ISyncTaskProgress sourceProgress)
         {
