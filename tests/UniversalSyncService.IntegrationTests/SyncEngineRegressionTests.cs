@@ -662,9 +662,16 @@ public sealed class SyncEngineRegressionTests
 
     private sealed class TestNodeProvider(NodeConfiguration configuration, TestNode node) : INodeProvider
     {
+        public string ProviderType => configuration.NodeType;
+
         public bool CanCreate(NodeConfiguration candidate)
         {
             return candidate.Id == configuration.Id;
+        }
+
+        public bool SupportsSyncItemKind(string syncItemKind)
+        {
+            return SyncItemKinds.IsFileSystem(syncItemKind);
         }
 
         public Task<INode> CreateAsync(NodeConfiguration candidate, CancellationToken cancellationToken)
@@ -775,6 +782,9 @@ public sealed class SyncEngineRegressionTests
 
         public NodeCapabilities Capabilities { get; } = NodeCapabilities.CanRead | NodeCapabilities.CanWrite | NodeCapabilities.CanDelete;
 
+        public IReadOnlySet<string> SupportedSyncItemKinds { get; } =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { SyncItemKinds.FileSystem };
+
         public NodeState State { get; private set; } = NodeState.Disconnected;
 
         public List<string> DeletedPaths { get; } = [];
@@ -826,7 +836,7 @@ public sealed class SyncEngineRegressionTests
 
         public SyncMode SyncMode => SyncMode.Bidirectional;
 
-        public string SyncItemType => "FileSystem";
+        public string SyncItemType => SyncItemKinds.FileSystem;
 
         public string? SourcePath => null;
 

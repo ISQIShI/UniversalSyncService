@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using UniversalSyncService.Abstractions.Configuration;
+using UniversalSyncService.Abstractions.SyncManagement.History;
 using UniversalSyncService.Abstractions.SyncManagement;
 using UniversalSyncService.Abstractions.SyncManagement.Tasks;
 using UniversalSyncService.Core.DependencyInjection;
@@ -18,11 +19,11 @@ using OneDriveLaneConfiguration = UniversalSyncService.Testing.OneDriveTestBoots
 namespace UniversalSyncService.IntegrationTests;
 
 /// <summary>
-/// 节点矩阵测试：统一 harness 同时覆盖 Local↔Local 与 Local↔OneDrive。
+/// 节点矩阵测试：统一抽象 harness 驱动所有 concrete node types。
 ///
 /// 目标：
-/// - Offline：Local↔Local 作为 deterministic 主链基线；
-/// - OnlineWarmAuth：Local↔OneDrive 进入真实 sync-plan 执行链；
+/// - 主测试链（contract/harness）覆盖 Local↔Local 与 Local↔OneDrive；
+/// - 节点创建/配置、同步执行、冲突检测、历史记录均走同一断言矩阵；
 /// - OnlineColdAuth：仅保留显式人工入口，不作为默认 gate；
 /// - AuthNegative：持久化认证缺失时受控失败（fail-fast）。
 /// </summary>
@@ -52,106 +53,13 @@ public sealed class NodeMatrixSyncTests : IAsyncLifetime
 
     [Fact]
     [Trait("Category", "Offline")]
-    public async Task Matrix_LocalToLocal_ShouldRemainDeterministicBaseline()
-    {
-        var masterRoot = Path.Combine(TestRootPath, "matrix-local-master");
-        var slaveRoot = Path.Combine(TestRootPath, "matrix-local-slave");
-        Directory.CreateDirectory(Path.Combine(masterRoot, "docs", "nested"));
-        Directory.CreateDirectory(slaveRoot);
-
-        var sourceFilePath = Path.Combine(masterRoot, "docs", "nested", "baseline.txt");
-        await File.WriteAllTextAsync(sourceFilePath, "local-baseline");
-
-        await WriteLocalLocalConfigAsync(masterRoot, slaveRoot);
-
-        using var host = await CreateHostAsync(TestRootPath);
-        await WaitForNodesAsync(host.Services, "local-master", "local-slave");
-        var planManager = host.Services.GetRequiredService<ISyncPlanManager>();
-
-        var results = await planManager.ExecutePlanNowAsync("local-filesystem-test", CancellationToken.None);
-        TestAssert.ContainsOnlyExpectedResults(results, SyncTaskResult.Success, SyncTaskResult.NoChanges);
-
-        var targetFilePath = Path.Combine(slaveRoot, "docs", "nested", "baseline.txt");
-        Assert.True(File.Exists(targetFilePath));
-        Assert.Equal("local-baseline", await File.ReadAllTextAsync(targetFilePath));
-
-        await host.StopAsync();
-    }
+    public async Task Matrix_LocalToLocal_ShouldPassUnifiedAbstractContract()
+        => await ExecuteUnifiedContractMatrixAsync(new LocalToLocalScenario(this));
 
     [SkippableFact(Timeout = 180000)]
     [Trait("Category", "OnlineWarmAuth")]
-    public async Task Matrix_LocalToOneDrive_ShouldRunSyncPlan_WithUploadDownloadDirectoryAndDeleteSignals()
-    {
-        var lane = await GetOnlineWarmAuthLaneConfigurationOrSkipAsync();
-
-        var masterRoot = Path.Combine(TestRootPath, "matrix-onedrive-master");
-        Directory.CreateDirectory(Path.Combine(masterRoot, "docs"));
-        var localSeedFilePath = Path.Combine(masterRoot, "docs", "guide.txt");
-        await File.WriteAllTextAsync(localSeedFilePath, "v1-from-local");
-
-        var remoteRoot = $"/UniversalSyncTest/NodeMatrixWarm_{Guid.NewGuid():N}";
-        await WriteLocalOneDriveWarmConfigAsync(masterRoot, lane, remoteRoot);
-
-        var verifyNode = await CreateConnectedOneDriveNodeAsync(lane, remoteRoot, ensureWarmAuthRecord: true);
-
-        try
-        {
-            using var host = await CreateHostAsync(TestRootPath);
-            await WaitForNodesAsync(host.Services, "local-master", "one-drive-slave");
-            var configService = host.Services.GetRequiredService<IConfigurationManagementService>();
-            var oneDriveNodeOption = configService
-                .GetSyncOptions()
-                .Nodes
-                .First(option => option.Id == "one-drive-slave");
-            Assert.True(oneDriveNodeOption.ConnectionSettings.TryGetValue("RootPath", out var configuredRootPath));
-            Assert.False(string.IsNullOrWhiteSpace(configuredRootPath));
-            Assert.StartsWith("/", configuredRootPath!, StringComparison.Ordinal);
-
-            var planManager = host.Services.GetRequiredService<ISyncPlanManager>();
-
-            var firstResults = await planManager.ExecutePlanNowAsync("node-matrix-local-onedrive", CancellationToken.None);
-            TestAssert.ContainsOnlyExpectedResults(firstResults, SyncTaskResult.Success, SyncTaskResult.NoChanges);
-
-            var firstRemoteSnapshot = await EnumerateRelativePathsAsync(verifyNode, CancellationToken.None);
-            Assert.Contains("docs", firstRemoteSnapshot);
-            Assert.Contains("docs/guide.txt", firstRemoteSnapshot);
-
-            File.Delete(localSeedFilePath);
-            var secondResults = await planManager.ExecutePlanNowAsync("node-matrix-local-onedrive", CancellationToken.None);
-            TestAssert.ContainsOnlyExpectedResults(secondResults, SyncTaskResult.Success, SyncTaskResult.NoChanges);
-
-            var secondRemoteSnapshot = await EnumerateRelativePathsAsync(verifyNode, CancellationToken.None);
-            Assert.DoesNotContain("docs/guide.txt", secondRemoteSnapshot);
-
-            var remoteOnlyTempPath = Path.Combine(TestRootPath, $"remote-{Guid.NewGuid():N}.txt");
-            await File.WriteAllTextAsync(remoteOnlyTempPath, "from-remote");
-            try
-            {
-                var remoteOnlyItem = new FileSystemSyncItem(remoteOnlyTempPath, "downloads/from-remote.txt");
-                await verifyNode.UploadAsync(remoteOnlyItem, CancellationToken.None);
-            }
-            finally
-            {
-                if (File.Exists(remoteOnlyTempPath))
-                {
-                    File.Delete(remoteOnlyTempPath);
-                }
-            }
-
-            var thirdResults = await planManager.ExecutePlanNowAsync("node-matrix-local-onedrive", CancellationToken.None);
-            TestAssert.ContainsOnlyExpectedResults(thirdResults, SyncTaskResult.Success, SyncTaskResult.NoChanges);
-
-            var pulledFilePath = Path.Combine(masterRoot, "downloads", "from-remote.txt");
-            Assert.True(File.Exists(pulledFilePath));
-            Assert.Equal("from-remote", await File.ReadAllTextAsync(pulledFilePath));
-
-            await host.StopAsync();
-        }
-        finally
-        {
-            await CleanupRemoteRootAsync(verifyNode);
-        }
-    }
+    public async Task Matrix_LocalToOneDrive_ShouldPassUnifiedAbstractContract()
+        => await ExecuteUnifiedContractMatrixAsync(new LocalToOneDriveWarmScenario(this));
 
     [SkippableFact(Timeout = 120000)]
     [Trait("Category", "OnlineColdAuth")]
@@ -194,6 +102,42 @@ public sealed class NodeMatrixSyncTests : IAsyncLifetime
     private async Task InitializeCoreAsync()
     {
         _testRoot = await TempContentRoot.CreateAsync("UniversalSyncService-NodeMatrix");
+    }
+
+    private async Task ExecuteUnifiedContractMatrixAsync(INodeMatrixContractScenario scenario)
+    {
+        await using (scenario)
+        {
+            await scenario.ArrangeAsync(TestRootPath);
+
+            using var host = await CreateHostAsync(TestRootPath);
+            await WaitForNodesAsync(host.Services, scenario.RequiredNodeIds);
+            await scenario.AssertNodeConfigurationAsync(host.Services);
+
+            var planManager = host.Services.GetRequiredService<ISyncPlanManager>();
+            var historyManager = host.Services.GetRequiredService<ISyncHistoryManager>();
+
+            var firstResults = await planManager.ExecutePlanNowAsync(scenario.PlanId, CancellationToken.None);
+            TestAssert.ContainsOnlyExpectedResults(firstResults, SyncTaskResult.Success, SyncTaskResult.NoChanges);
+            await scenario.AssertAfterInitialSyncAsync();
+
+            await scenario.AddSlaveOnlyChangeAsync(TestRootPath);
+            var secondResults = await planManager.ExecutePlanNowAsync(scenario.PlanId, CancellationToken.None);
+            TestAssert.ContainsOnlyExpectedResults(secondResults, SyncTaskResult.Success, SyncTaskResult.NoChanges);
+            await scenario.AssertSlaveToMasterSignalAsync();
+
+            await scenario.CreateConflictAsync(TestRootPath);
+            var conflictResults = await planManager.ExecutePlanNowAsync(scenario.PlanId, CancellationToken.None);
+            Assert.Contains(SyncTaskResult.Conflict, conflictResults.Values);
+
+            var recentHistory = await historyManager.GetRecentHistoryAsync(scenario.PlanId, limit: 100);
+            Assert.Contains(
+                recentHistory,
+                entry => entry.PlanId == scenario.PlanId
+                    && entry.Metadata.Path.Replace('\\', '/').Equals(scenario.HistoryProbePath, StringComparison.OrdinalIgnoreCase));
+
+            await host.StopAsync();
+        }
     }
 
     private static async Task<IHost> CreateHostAsync(string contentRoot)
@@ -386,5 +330,206 @@ public sealed class NodeMatrixSyncTests : IAsyncLifetime
             "OnlineColdAuth 前置检查失败：未解析到有效 ClientId，按设计 Skip。");
 
         return configuration;
+    }
+
+    private interface INodeMatrixContractScenario : IAsyncDisposable
+    {
+        string PlanId { get; }
+
+        string HistoryProbePath { get; }
+
+        string[] RequiredNodeIds { get; }
+
+        Task ArrangeAsync(string testRootPath);
+
+        Task AssertNodeConfigurationAsync(IServiceProvider services);
+
+        Task AssertAfterInitialSyncAsync();
+
+        Task AddSlaveOnlyChangeAsync(string testRootPath);
+
+        Task AssertSlaveToMasterSignalAsync();
+
+        Task CreateConflictAsync(string testRootPath);
+    }
+
+    private sealed class LocalToLocalScenario(NodeMatrixSyncTests owner) : INodeMatrixContractScenario
+    {
+        private const string BaselineRelativePath = "docs/nested/baseline.txt";
+        private const string ConflictRelativePath = "conflict/shared.txt";
+        private const string SlaveOnlyRelativePath = "downloads/from-slave.txt";
+
+        private string _masterRoot = string.Empty;
+        private string _slaveRoot = string.Empty;
+
+        public string PlanId => "local-filesystem-test";
+
+        public string HistoryProbePath => BaselineRelativePath;
+
+        public string[] RequiredNodeIds => ["local-master", "local-slave"];
+
+        public async Task ArrangeAsync(string testRootPath)
+        {
+            _masterRoot = Path.Combine(testRootPath, "matrix-local-master");
+            _slaveRoot = Path.Combine(testRootPath, "matrix-local-slave");
+
+            Directory.CreateDirectory(Path.Combine(_masterRoot, "docs", "nested"));
+            Directory.CreateDirectory(Path.Combine(_masterRoot, "conflict"));
+            Directory.CreateDirectory(_slaveRoot);
+
+            await File.WriteAllTextAsync(Path.Combine(_masterRoot, BaselineRelativePath), "local-baseline");
+            await File.WriteAllTextAsync(Path.Combine(_masterRoot, ConflictRelativePath), "conflict-seed");
+
+            await owner.WriteLocalLocalConfigAsync(_masterRoot, _slaveRoot);
+        }
+
+        public Task AssertNodeConfigurationAsync(IServiceProvider services)
+        {
+            var configurationService = services.GetRequiredService<IConfigurationManagementService>();
+            var syncOptions = configurationService.GetSyncOptions();
+            var masterOption = syncOptions.Nodes.First(option => option.Id == "local-master");
+            var slaveOption = syncOptions.Nodes.First(option => option.Id == "local-slave");
+
+            Assert.Equal("Local", masterOption.NodeType);
+            Assert.Equal("Local", slaveOption.NodeType);
+            Assert.Equal(_masterRoot.Replace('\\', '/'), masterOption.ConnectionSettings["RootPath"]);
+            Assert.Equal(_slaveRoot.Replace('\\', '/'), slaveOption.ConnectionSettings["RootPath"]);
+
+            return Task.CompletedTask;
+        }
+
+        public async Task AssertAfterInitialSyncAsync()
+        {
+            var slaveBaselinePath = Path.Combine(_slaveRoot, BaselineRelativePath);
+            var slaveConflictSeedPath = Path.Combine(_slaveRoot, ConflictRelativePath);
+
+            Assert.True(File.Exists(slaveBaselinePath));
+            Assert.True(File.Exists(slaveConflictSeedPath));
+            Assert.Equal("local-baseline", await File.ReadAllTextAsync(slaveBaselinePath));
+            Assert.Equal("conflict-seed", await File.ReadAllTextAsync(slaveConflictSeedPath));
+        }
+
+        public async Task AddSlaveOnlyChangeAsync(string testRootPath)
+        {
+            var slaveOnlyPath = Path.Combine(_slaveRoot, SlaveOnlyRelativePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(slaveOnlyPath)!);
+            await File.WriteAllTextAsync(slaveOnlyPath, "from-slave");
+        }
+
+        public async Task AssertSlaveToMasterSignalAsync()
+        {
+            var pulledPath = Path.Combine(_masterRoot, SlaveOnlyRelativePath);
+            Assert.True(File.Exists(pulledPath));
+            Assert.Equal("from-slave", await File.ReadAllTextAsync(pulledPath));
+        }
+
+        public async Task CreateConflictAsync(string testRootPath)
+        {
+            await File.WriteAllTextAsync(Path.Combine(_masterRoot, ConflictRelativePath), "master-conflict-v2");
+            await File.WriteAllTextAsync(Path.Combine(_slaveRoot, ConflictRelativePath), "slave-conflict-v2");
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class LocalToOneDriveWarmScenario(NodeMatrixSyncTests owner) : INodeMatrixContractScenario
+    {
+        private const string BaselineRelativePath = "docs/guide.txt";
+        private const string ConflictRelativePath = "conflict/shared.txt";
+        private const string SlaveOnlyRelativePath = "downloads/from-remote.txt";
+
+        private string _masterRoot = string.Empty;
+        private string _remoteRoot = string.Empty;
+        private OneDriveNode? _verifyNode;
+
+        public string PlanId => "node-matrix-local-onedrive";
+
+        public string HistoryProbePath => BaselineRelativePath;
+
+        public string[] RequiredNodeIds => ["local-master", "one-drive-slave"];
+
+        public async Task ArrangeAsync(string testRootPath)
+        {
+            var lane = await GetOnlineWarmAuthLaneConfigurationOrSkipAsync();
+
+            _masterRoot = Path.Combine(testRootPath, "matrix-onedrive-master");
+            Directory.CreateDirectory(Path.Combine(_masterRoot, "docs"));
+            Directory.CreateDirectory(Path.Combine(_masterRoot, "conflict"));
+
+            await File.WriteAllTextAsync(Path.Combine(_masterRoot, BaselineRelativePath), "v1-from-local");
+            await File.WriteAllTextAsync(Path.Combine(_masterRoot, ConflictRelativePath), "conflict-seed");
+
+            _remoteRoot = $"/UniversalSyncTest/NodeMatrixWarm_{Guid.NewGuid():N}";
+            await owner.WriteLocalOneDriveWarmConfigAsync(_masterRoot, lane, _remoteRoot);
+            _verifyNode = await owner.CreateConnectedOneDriveNodeAsync(lane, _remoteRoot, ensureWarmAuthRecord: true);
+        }
+
+        public Task AssertNodeConfigurationAsync(IServiceProvider services)
+        {
+            var configurationService = services.GetRequiredService<IConfigurationManagementService>();
+            var oneDriveNodeOption = configurationService
+                .GetSyncOptions()
+                .Nodes
+                .First(option => option.Id == "one-drive-slave");
+
+            Assert.Equal("OneDrive", oneDriveNodeOption.NodeType);
+            Assert.True(oneDriveNodeOption.ConnectionSettings.TryGetValue("RootPath", out var configuredRootPath));
+            Assert.Equal(_remoteRoot, configuredRootPath);
+
+            return Task.CompletedTask;
+        }
+
+        public async Task AssertAfterInitialSyncAsync()
+        {
+            var snapshot = await EnumerateRelativePathsAsync(_verifyNode!, CancellationToken.None);
+            Assert.Contains("docs", snapshot);
+            Assert.Contains(BaselineRelativePath, snapshot);
+            Assert.Contains(ConflictRelativePath, snapshot);
+        }
+
+        public Task AddSlaveOnlyChangeAsync(string testRootPath)
+            => UploadTextToRemoteAsync(testRootPath, "from-remote", SlaveOnlyRelativePath);
+
+        public async Task AssertSlaveToMasterSignalAsync()
+        {
+            var pulledPath = Path.Combine(_masterRoot, SlaveOnlyRelativePath);
+            Assert.True(File.Exists(pulledPath));
+            Assert.Equal("from-remote", await File.ReadAllTextAsync(pulledPath));
+        }
+
+        public async Task CreateConflictAsync(string testRootPath)
+        {
+            await File.WriteAllTextAsync(Path.Combine(_masterRoot, ConflictRelativePath), "master-conflict-v2");
+            await UploadTextToRemoteAsync(testRootPath, "slave-conflict-v2", ConflictRelativePath);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (_verifyNode is not null)
+            {
+                await CleanupRemoteRootAsync(_verifyNode);
+            }
+        }
+
+        private async Task UploadTextToRemoteAsync(string testRootPath, string content, string relativePath)
+        {
+            var tempPath = Path.Combine(testRootPath, $"matrix-remote-{Guid.NewGuid():N}.txt");
+            await File.WriteAllTextAsync(tempPath, content);
+            try
+            {
+                var item = new FileSystemSyncItem(tempPath, relativePath);
+                await _verifyNode!.UploadAsync(item, CancellationToken.None);
+            }
+            finally
+            {
+                if (File.Exists(tempPath))
+                {
+                    File.Delete(tempPath);
+                }
+            }
+        }
     }
 }
