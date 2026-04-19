@@ -397,9 +397,13 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
         var hostWorkspaceRoot = _testRootPath;
         var slaveRoot = Path.Combine(Path.GetTempPath(), "UniversalSyncService-HostLocalSlave", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(slaveRoot);
+        Directory.CreateDirectory(Path.Combine(hostWorkspaceRoot, "data"));
 
         var masterFilePath = Path.Combine(hostWorkspaceRoot, "host-file.txt");
         await File.WriteAllTextAsync(masterFilePath, "from-host-local");
+        await File.WriteAllTextAsync(Path.Combine(hostWorkspaceRoot, "data", "sync-history.db-wal"), "history-wal");
+        await File.WriteAllTextAsync(Path.Combine(hostWorkspaceRoot, "data", "sync-history.db-shm"), "history-shm");
+        await File.WriteAllTextAsync(Path.Combine(hostWorkspaceRoot, "data", "sync-history.db-journal"), "history-journal");
 
         var configPath = Path.Combine(_testRootPath, "appsettings.yaml");
         await File.WriteAllTextAsync(configPath, CreateImplicitHostLocalYaml(slaveRoot));
@@ -414,6 +418,8 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
 
         Assert.False(File.Exists(Path.Combine(slaveRoot, "data", "sync-history.db")));
         Assert.False(File.Exists(Path.Combine(slaveRoot, "data", "sync-history.db-wal")));
+        Assert.False(File.Exists(Path.Combine(slaveRoot, "data", "sync-history.db-shm")));
+        Assert.False(File.Exists(Path.Combine(slaveRoot, "data", "sync-history.db-journal")));
 
         await host.StopAsync();
         Directory.Delete(slaveRoot, recursive: true);
