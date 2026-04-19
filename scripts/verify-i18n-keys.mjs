@@ -8,9 +8,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..');
 
-const enPath = path.join(repoRoot, 'docs', 'i18n', 'locales', 'en.json');
-const zhCnPath = path.join(repoRoot, 'docs', 'i18n', 'locales', 'zh-CN.json');
-const templatePath = path.join(repoRoot, 'docs', 'i18n', 'README.template.md');
+const readmeEnPath = path.join(repoRoot, 'docs', 'i18n', 'targets', 'readme', 'locales', 'en.json');
+const readmeZhCnPath = path.join(repoRoot, 'docs', 'i18n', 'targets', 'readme', 'locales', 'zh-CN.json');
+const webEnPath = path.join(repoRoot, 'docs', 'i18n', 'targets', 'web', 'locales', 'en.json');
+const webZhCnPath = path.join(repoRoot, 'docs', 'i18n', 'targets', 'web', 'locales', 'zh-CN.json');
+const templatePath = path.join(repoRoot, 'docs', 'i18n', 'targets', 'readme', 'template.md');
 const webI18nResourcesPath = path.join(repoRoot, 'UniversalSyncService.Web', 'src', 'i18n', 'generated', 'resources.ts');
 const webI18nLocaleResolverPath = path.join(repoRoot, 'UniversalSyncService.Web', 'src', 'i18n', 'locale.ts');
 
@@ -73,58 +75,29 @@ function collectQuotedValues(text) {
   return values;
 }
 
-try {
-  const [enRaw, zhCnRaw, templateRaw, webI18nResourcesRaw, webI18nLocaleResolverRaw] = await Promise.all([
-    readFile(enPath, 'utf8'),
-    readFile(zhCnPath, 'utf8'),
-    readFile(templatePath, 'utf8'),
-    readFile(webI18nResourcesPath, 'utf8'),
-    readFile(webI18nLocaleResolverPath, 'utf8'),
-  ]);
-
-  const en = JSON.parse(enRaw);
-  const zhCN = JSON.parse(zhCnRaw);
-
-  ensureObject('en.json', en);
-  ensureObject('zh-CN.json', zhCN);
+function verifyLocaleParity(issues, scope, en, zhCN) {
+  ensureObject(`${scope}/en.json`, en);
+  ensureObject(`${scope}/zh-CN.json`, zhCN);
 
   const enKeys = Object.keys(en).sort();
   const zhKeys = Object.keys(zhCN).sort();
   const enSet = new Set(enKeys);
   const zhSet = new Set(zhKeys);
-  const issues = [];
 
   const zhMissing = listDifference(enKeys, zhSet);
   const zhOrphan = listDifference(zhKeys, enSet);
 
-  if (!enSet.has('readme.title')) {
-    issues.push('缺少回退结构键: readme.title');
-  }
-
-  if (!enSet.has('web.nav.dashboard')) {
-    issues.push('缺少回退结构键: web.nav.dashboard');
-  }
-
-  if (!enSet.has('web.app.title')) {
-    issues.push('缺少回退结构键: web.app.title');
-  }
-
   if (zhMissing.length > 0) {
-    issues.push(`zh-CN 缺少键: ${zhMissing.join(', ')}`);
+    issues.push(`${scope} zh-CN 缺少键: ${zhMissing.join(', ')}`);
   }
 
   if (zhOrphan.length > 0) {
-    issues.push(`zh-CN 存在孤儿键: ${zhOrphan.join(', ')}`);
-  }
-
-  // fallback 规则：fallback locale 必须在受支持 locale 集合中
-  if (!requiredLocales.includes(fallbackLocale)) {
-    issues.push(`fallback locale 必须出现在受支持 locale 列表中: ${fallbackLocale}`);
+    issues.push(`${scope} zh-CN 存在孤儿键: ${zhOrphan.join(', ')}`);
   }
 
   for (const key of enKeys) {
     if (!keyPattern.test(key)) {
-      issues.push(`键命名不符合规范: ${key}`);
+      issues.push(`${scope} 键命名不符合规范: ${key}`);
       continue;
     }
 
@@ -132,11 +105,11 @@ try {
     const zhValue = zhCN[key];
 
     if (typeof enValue !== 'string' || enValue.trim().length === 0) {
-      issues.push(`en 值无效: ${key}`);
+      issues.push(`${scope} en 值无效: ${key}`);
     }
 
     if (typeof zhValue !== 'string' || zhValue.trim().length === 0) {
-      issues.push(`zh-CN 值无效: ${key}`);
+      issues.push(`${scope} zh-CN 值无效: ${key}`);
     }
 
     if (typeof enValue === 'string' && typeof zhValue === 'string') {
@@ -144,9 +117,64 @@ try {
       const zhPlaceholders = collectPlaceholders(zhValue);
 
       if (!equalArray(enPlaceholders, zhPlaceholders)) {
-        issues.push(`插值占位符不一致: ${key} | en={${enPlaceholders.join(',')}} zh-CN={${zhPlaceholders.join(',')}}`);
+        issues.push(`${scope} 插值占位符不一致: ${key} | en={${enPlaceholders.join(',')}} zh-CN={${zhPlaceholders.join(',')}}`);
       }
     }
+  }
+
+  return { enKeys, enSet };
+}
+
+try {
+  const [
+    readmeEnRaw,
+    readmeZhCnRaw,
+    webEnRaw,
+    webZhCnRaw,
+    templateRaw,
+    webI18nResourcesRaw,
+    webI18nLocaleResolverRaw,
+  ] = await Promise.all([
+    readFile(readmeEnPath, 'utf8'),
+    readFile(readmeZhCnPath, 'utf8'),
+    readFile(webEnPath, 'utf8'),
+    readFile(webZhCnPath, 'utf8'),
+    readFile(templatePath, 'utf8'),
+    readFile(webI18nResourcesPath, 'utf8'),
+    readFile(webI18nLocaleResolverPath, 'utf8'),
+  ]);
+
+  const readmeEn = JSON.parse(readmeEnRaw);
+  const readmeZhCN = JSON.parse(readmeZhCnRaw);
+  const webEn = JSON.parse(webEnRaw);
+  const webZhCN = JSON.parse(webZhCnRaw);
+
+  const issues = [];
+
+  const readmeVerified = verifyLocaleParity(issues, 'readme target', readmeEn, readmeZhCN);
+  const webVerified = verifyLocaleParity(issues, 'web target', webEn, webZhCN);
+
+  if (!readmeVerified.enSet.has('readme.title')) {
+    issues.push('缺少回退结构键: readme.title');
+  }
+
+  if (!webVerified.enSet.has('web.nav.dashboard')) {
+    issues.push('缺少回退结构键: web.nav.dashboard');
+  }
+
+  if (!webVerified.enSet.has('web.app.title')) {
+    issues.push('缺少回退结构键: web.app.title');
+  }
+
+  for (const key of webVerified.enKeys) {
+    if (key.startsWith('readme.')) {
+      issues.push(`web target 不允许 readme 命名空间: ${key}`);
+    }
+  }
+
+  // fallback 规则：fallback locale 必须在受支持 locale 集合中
+  if (!requiredLocales.includes(fallbackLocale)) {
+    issues.push(`fallback locale 必须出现在受支持 locale 列表中: ${fallbackLocale}`);
   }
 
   templatePlaceholderPattern.lastIndex = 0;
@@ -160,7 +188,7 @@ try {
   }
 
   for (const placeholder of templatePlaceholders) {
-    if (!enSet.has(placeholder)) {
+    if (!readmeVerified.enSet.has(placeholder)) {
       issues.push(`README 模板占位符未在 en.json 中定义: ${placeholder}`);
     }
 
@@ -211,7 +239,7 @@ try {
     process.exit(1);
   }
 
-  process.stdout.write(`[verify-i18n-keys] OK (${enKeys.length} keys, parity aligned)\n`);
+  process.stdout.write(`[verify-i18n-keys] OK (readme=${readmeVerified.enKeys.length} keys, web=${webVerified.enKeys.length} keys, parity aligned)\n`);
 } catch (error) {
   const message = error instanceof Error ? error.stack ?? error.message : String(error);
   process.stderr.write(`[verify-i18n-keys] Failed: ${message}\n`);

@@ -21,7 +21,7 @@ async function main() {
   const options = mapReadmeArgs(process.argv.slice(2));
   const result = await runGenerateDocs(options);
   if (options.check) {
-    process.exit(result.hasDrift ? 1 : 0);
+    process.exit(result.hasDrift || result.hasFallbackHits ? 1 : 0);
   }
 }
 

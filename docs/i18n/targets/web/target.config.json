@@ -1,0 +1,7 @@
+{
+  "target": "web",
+  "localeDir": "locales",
+  "locales": ["en", "zh-CN"],
+  "defaultLocale": "en",
+  "output": "UniversalSyncService.Web/src/i18n/generated/resources.ts"
+}

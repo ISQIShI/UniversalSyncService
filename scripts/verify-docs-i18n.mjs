@@ -2,7 +2,13 @@
 
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { buildPlan, parseArgs, renderEntry } from './generate-docs.mjs';
+import {
+  buildPlan,
+  docsI18nFallbackReportRelativePath,
+  parseArgs,
+  renderEntry,
+  writeFallbackReport,
+} from './generate-docs.mjs';
 
 function toPosixPath(value) {
   return value.split(path.sep).join('/');
@@ -28,6 +34,7 @@ async function verifyDocsI18n(options = {}) {
   }
 
   const issues = [];
+  const fallbackHits = [];
 
   for (const entry of activeEntries) {
     if (!entry.templateExists) {
@@ -67,7 +74,9 @@ async function verifyDocsI18n(options = {}) {
     }
 
     const siblings = generatedEntriesByTarget.get(entry.target.name) ?? [entry];
-    const expected = await renderEntry(entry, siblings);
+    const renderResult = await renderEntry(entry, siblings);
+    const expected = renderResult.content;
+    fallbackHits.push(...renderResult.fallbackHits);
 
     let actual = null;
     try {
@@ -86,6 +95,21 @@ async function verifyDocsI18n(options = {}) {
     }
   }
 
+  const fallbackReport = await writeFallbackReport({
+    source: 'verify-docs-i18n',
+    target: args.target,
+    locale: args.locale,
+    fallbackHits,
+    reportRelativePath: docsI18nFallbackReportRelativePath,
+  });
+
+  if (fallbackReport.fallbackHits.length > 0) {
+    issues.push(`检测到 fallback 命中 ${fallbackReport.fallbackHits.length} 项（报告: ${fallbackReport.reportRelativePath}）`);
+    for (const fallbackHit of fallbackReport.fallbackHits) {
+      issues.push(`fallback hit: target=${fallbackHit.target} locale=${fallbackHit.locale} key=${fallbackHit.key}`);
+    }
+  }
+
   if (issues.length > 0) {
     process.stderr.write('[verify-docs-i18n] Verification failed:\n');
     for (const issue of issues) {
@@ -94,7 +118,9 @@ async function verifyDocsI18n(options = {}) {
     process.exit(1);
   }
 
-  process.stdout.write(`[verify-docs-i18n] OK (${activeEntries.length} target+locale combinations, ${buildArgView(args)})\n`);
+  process.stdout.write(
+    `[verify-docs-i18n] OK (${activeEntries.length} target+locale combinations, ${buildArgView(args)}, report=${fallbackReport.reportRelativePath})\n`,
+  );
 }
 
 async function main() {

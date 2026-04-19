@@ -11,6 +11,8 @@ export const targetsRoot = path.join(repoRoot, 'docs', 'i18n', 'targets');
 
 const placeholderRegex = /{{\s*([a-zA-Z0-9._-]+)\s*}}/g;
 const targetConfigFileName = 'target.config.json';
+const fallbackLocaleCode = 'en';
+export const docsI18nFallbackReportRelativePath = 'docs/i18n/reports/docs-i18n-fallback-report.json';
 
 function toPosixPath(value) {
   return value.split(path.sep).join('/');
@@ -154,6 +156,29 @@ export async function loadTargets(baseDir = repoRoot) {
 
     const configRaw = await readFile(configPath, 'utf8');
     const parsedConfig = JSON.parse(configRaw);
+
+    const hasOutputs =
+      parsedConfig
+      && typeof parsedConfig === 'object'
+      && !Array.isArray(parsedConfig)
+      && parsedConfig.outputs
+      && typeof parsedConfig.outputs === 'object'
+      && !Array.isArray(parsedConfig.outputs);
+
+    if (!hasOutputs) {
+      const isNonDocTarget =
+        parsedConfig
+        && typeof parsedConfig === 'object'
+        && !Array.isArray(parsedConfig)
+        && typeof parsedConfig.output === 'string';
+
+      if (isNonDocTarget) {
+        continue;
+      }
+
+      throw new Error(`target config 缺少 outputs: ${normalizeOutputRelativePath(configPath)}`);
+    }
+
     targets.push(normalizeTargetConfig(targetDir, parsedConfig));
   }
 
@@ -163,6 +188,71 @@ export async function loadTargets(baseDir = repoRoot) {
 
 function normalizeOutputRelativePath(outputAbsolutePath) {
   return toPosixPath(path.relative(repoRoot, outputAbsolutePath));
+}
+
+function normalizeRenderableValue(value) {
+  return typeof value === 'string' ? value : String(value);
+}
+
+function toFallbackHitKey(fallbackHit) {
+  return `${fallbackHit.target}\u0000${fallbackHit.locale}\u0000${fallbackHit.key}`;
+}
+
+function sortFallbackHits(fallbackHits) {
+  return [...fallbackHits].sort((left, right) => {
+    const byTarget = left.target.localeCompare(right.target, 'en');
+    if (byTarget !== 0) {
+      return byTarget;
+    }
+
+    const byLocale = left.locale.localeCompare(right.locale, 'en');
+    if (byLocale !== 0) {
+      return byLocale;
+    }
+
+    return left.key.localeCompare(right.key, 'en');
+  });
+}
+
+function deduplicateFallbackHits(fallbackHits) {
+  const deduplicated = new Map();
+  for (const fallbackHit of fallbackHits) {
+    deduplicated.set(toFallbackHitKey(fallbackHit), fallbackHit);
+  }
+
+  return sortFallbackHits(Array.from(deduplicated.values()));
+}
+
+export async function writeFallbackReport({
+  source,
+  target,
+  locale,
+  fallbackHits,
+  reportRelativePath = docsI18nFallbackReportRelativePath,
+} = {}) {
+  const normalizedFallbackHits = deduplicateFallbackHits(fallbackHits ?? []);
+  const reportPath = path.resolve(repoRoot, reportRelativePath);
+  await mkdir(path.dirname(reportPath), { recursive: true });
+
+  const reportPayload = {
+    generatedAt: new Date().toISOString(),
+    source,
+    filters: {
+      target: target ?? null,
+      locale: locale ?? null,
+    },
+    fallbackLocale: fallbackLocaleCode,
+    fallbackHitCount: normalizedFallbackHits.length,
+    fallbackHits: normalizedFallbackHits,
+  };
+
+  await writeFile(reportPath, `${JSON.stringify(reportPayload, null, 2)}\n`, 'utf8');
+
+  return {
+    reportPath,
+    reportRelativePath: normalizeOutputRelativePath(reportPath),
+    fallbackHits: normalizedFallbackHits,
+  };
 }
 
 export async function buildPlan({ target = null } = {}) {
@@ -242,27 +332,55 @@ export async function renderEntry(entry, siblingEntries) {
   const localeData = JSON.parse(localeRaw);
   ensureObject(`${entry.target.name}/${entry.locale}.json`, localeData);
 
-  const missingKeys = new Set();
-  const renderedBody = templateRaw.replace(placeholderRegex, (fullMatch, key) => {
-    if (!Object.prototype.hasOwnProperty.call(localeData, key)) {
-      missingKeys.add(key);
-      return fullMatch;
+  let fallbackData = localeData;
+  if (entry.locale !== fallbackLocaleCode) {
+    const fallbackLocalePath = path.join(entry.target.localeDirPath, `${fallbackLocaleCode}.json`);
+    if (!(await exists(fallbackLocalePath))) {
+      throw new Error(`target=${entry.target.name}, locale=${entry.locale} 缺少 fallback locale 文件: ${normalizeOutputRelativePath(fallbackLocalePath)}`);
     }
 
-    const value = localeData[key];
-    return typeof value === 'string' ? value : String(value);
+    const fallbackRaw = await readFile(fallbackLocalePath, 'utf8');
+    fallbackData = JSON.parse(fallbackRaw);
+    ensureObject(`${entry.target.name}/${fallbackLocaleCode}.json`, fallbackData);
+  }
+
+  const fallbackHits = [];
+  const hardMissingKeys = new Set();
+  const renderedBody = templateRaw.replace(placeholderRegex, (fullMatch, key) => {
+    if (Object.prototype.hasOwnProperty.call(localeData, key)) {
+      return normalizeRenderableValue(localeData[key]);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(fallbackData, key)) {
+      fallbackHits.push({
+        target: entry.target.name,
+        locale: entry.locale,
+        key,
+      });
+
+      return normalizeRenderableValue(fallbackData[key]);
+    }
+
+    hardMissingKeys.add(key);
+    return fullMatch;
   });
 
-  if (missingKeys.size > 0) {
-    throw new Error(`target=${entry.target.name}, locale=${entry.locale} 缺少翻译键: ${Array.from(missingKeys).sort().join(', ')}`);
+  if (hardMissingKeys.size > 0) {
+    throw new Error(
+      `target=${entry.target.name}, locale=${entry.locale} 缺少翻译键（locale 与 target-${fallbackLocaleCode} 均不存在）: ${Array.from(hardMissingKeys)
+        .sort()
+        .join(', ')}`,
+    );
   }
 
-  if (!entry.target.topLanguageLinks) {
-    return renderedBody;
-  }
+  const renderedContent = entry.target.topLanguageLinks
+    ? `${buildLanguageLinksLine(entry, siblingEntries)}\n\n${renderedBody}`
+    : renderedBody;
 
-  const languageLinksLine = buildLanguageLinksLine(entry, siblingEntries);
-  return `${languageLinksLine}\n\n${renderedBody}`;
+  return {
+    content: renderedContent,
+    fallbackHits: deduplicateFallbackHits(fallbackHits),
+  };
 }
 
 export async function runGenerateDocs({
@@ -300,6 +418,7 @@ export async function runGenerateDocs({
   }
 
   let hasDrift = false;
+  const fallbackHits = [];
 
   for (const entry of activeEntries) {
     if (!entry.templateExists || !entry.localeDirExists || !entry.localeExists) {
@@ -310,7 +429,9 @@ export async function runGenerateDocs({
     }
 
     const siblings = generatedEntriesByTarget.get(entry.target.name) ?? [entry];
-    const rendered = await renderEntry(entry, siblings);
+    const renderResult = await renderEntry(entry, siblings);
+    const rendered = renderResult.content;
+    fallbackHits.push(...renderResult.fallbackHits);
 
     if (check) {
       let existingContent = null;
@@ -341,14 +462,40 @@ export async function runGenerateDocs({
     process.stdout.write(`[${logPrefix}] Generated: ${entry.outputRelativePath} (target=${entry.target.name}, locale=${entry.locale})\n`);
   }
 
-  return { hasDrift };
+  const fallbackReport = await writeFallbackReport({
+    source: 'generate-docs',
+    target,
+    locale,
+    fallbackHits,
+  });
+
+  if (fallbackReport.fallbackHits.length > 0) {
+    process.stderr.write(
+      `[${logPrefix}] 检测到 fallback 命中 ${fallbackReport.fallbackHits.length} 项，详见报告: ${fallbackReport.reportRelativePath}\n`,
+    );
+
+    for (const fallbackHit of fallbackReport.fallbackHits) {
+      process.stderr.write(
+        `[${logPrefix}] fallback hit: target=${fallbackHit.target} locale=${fallbackHit.locale} key=${fallbackHit.key}\n`,
+      );
+    }
+  } else {
+    process.stdout.write(`[${logPrefix}] fallback report: ${fallbackReport.reportRelativePath} (0 hit)\n`);
+  }
+
+  return {
+    hasDrift,
+    hasFallbackHits: fallbackReport.fallbackHits.length > 0,
+    fallbackHits: fallbackReport.fallbackHits,
+    reportRelativePath: fallbackReport.reportRelativePath,
+  };
 }
 
 async function main() {
   const args = parseArgs();
   const result = await runGenerateDocs(args);
   if (args.check) {
-    process.exit(result.hasDrift ? 1 : 0);
+    process.exit(result.hasDrift || result.hasFallbackHits ? 1 : 0);
   }
 }
 
