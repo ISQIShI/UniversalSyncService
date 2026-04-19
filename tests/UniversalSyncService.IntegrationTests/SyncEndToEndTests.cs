@@ -7,67 +7,45 @@ using UniversalSyncService.Abstractions.SyncManagement.Tasks;
 using UniversalSyncService.Core.DependencyInjection;
 using UniversalSyncService.Core.SyncManagement.ConfigNodes;
 using UniversalSyncService.Host.Configuration;
+using UniversalSyncService.Testing;
 using Xunit;
 
 namespace UniversalSyncService.IntegrationTests;
 
 public sealed class SyncEndToEndTests : IAsyncLifetime
 {
-    private string _testRootPath = string.Empty;
+    private TempContentRoot? _testRoot;
+
+    private string TestRootPath => _testRoot!.RootPath;
 
     public Task InitializeAsync()
     {
-        _testRootPath = Path.Combine(Path.GetTempPath(), "UniversalSyncService-Integration", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(_testRootPath);
-        return Task.CompletedTask;
+        return InitializeCoreAsync();
     }
 
     public async Task DisposeAsync()
     {
-        if (Directory.Exists(_testRootPath))
+        if (_testRoot is not null)
         {
-            for (var attempt = 0; attempt < 5; attempt++)
-            {
-                try
-                {
-                    Directory.Delete(_testRootPath, recursive: true);
-                    break;
-                }
-                catch (IOException) when (attempt < 4)
-                {
-                    await Task.Delay(200);
-                }
-                catch (UnauthorizedAccessException) when (attempt < 4)
-                {
-                    await Task.Delay(200);
-                }
-                catch (IOException)
-                {
-                    break;
-                }
-                catch (UnauthorizedAccessException)
-                {
-                    break;
-                }
-            }
+            await _testRoot.DisposeAsync();
         }
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
     public async Task LocalFilesystemPlan_Should_CopyFile_And_WriteSqliteHistory()
     {
-        var masterRoot = Path.Combine(_testRootPath, "master");
-        var slaveRoot = Path.Combine(_testRootPath, "slave");
+        var masterRoot = Path.Combine(TestRootPath, "master");
+        var slaveRoot = Path.Combine(TestRootPath, "slave");
         Directory.CreateDirectory(masterRoot);
         Directory.CreateDirectory(slaveRoot);
 
         var sourceFilePath = Path.Combine(masterRoot, "hello.txt");
         await File.WriteAllTextAsync(sourceFilePath, "hello-sync");
 
-        var configPath = Path.Combine(_testRootPath, "appsettings.yaml");
-        await File.WriteAllTextAsync(configPath, CreateTestYaml(masterRoot, slaveRoot));
+        await WriteLocalLocalConfigAsync(masterRoot, slaveRoot);
 
-        using var host = await CreateHostAsync(_testRootPath);
+        using var host = await CreateHostAsync(TestRootPath);
         await WaitForNodesAsync(host.Services, "local-master", "local-slave");
         var planManager = host.Services.GetRequiredService<ISyncPlanManager>();
 
@@ -76,14 +54,13 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
         Assert.Equal("local-filesystem-test", plans[0].Id);
 
         var results = await planManager.ExecutePlanNowAsync("local-filesystem-test", CancellationToken.None);
-        Assert.NotEmpty(results);
-        Assert.All(results.Values, result => Assert.Contains(result, new[] { SyncTaskResult.Success, SyncTaskResult.NoChanges }));
+        TestAssert.ContainsOnlyExpectedResults(results, SyncTaskResult.Success, SyncTaskResult.NoChanges);
 
         var targetFilePath = Path.Combine(slaveRoot, "hello.txt");
         Assert.True(File.Exists(targetFilePath));
         Assert.Equal("hello-sync", await File.ReadAllTextAsync(targetFilePath));
 
-        var sqlitePath = Path.Combine(_testRootPath, "data", "sync-history.db");
+        var sqlitePath = Path.Combine(TestRootPath, "data", "sync-history.db");
         Assert.True(File.Exists(sqlitePath));
 
         var executedPlan = planManager.GetPlanById("local-filesystem-test");
@@ -94,10 +71,11 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
     public async Task LocalFilesystemPlan_Should_SyncNestedDirectories()
     {
-        var masterRoot = Path.Combine(_testRootPath, "master-update");
-        var slaveRoot = Path.Combine(_testRootPath, "slave-update");
+        var masterRoot = Path.Combine(TestRootPath, "master-update");
+        var slaveRoot = Path.Combine(TestRootPath, "slave-update");
         Directory.CreateDirectory(Path.Combine(masterRoot, "docs", "nested"));
         Directory.CreateDirectory(slaveRoot);
 
@@ -105,10 +83,9 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
         var slaveFilePath = Path.Combine(slaveRoot, "docs", "nested", "note.txt");
         await File.WriteAllTextAsync(masterFilePath, "v1");
 
-        var configPath = Path.Combine(_testRootPath, "appsettings.yaml");
-        await File.WriteAllTextAsync(configPath, CreateTestYaml(masterRoot, slaveRoot));
+        await WriteLocalLocalConfigAsync(masterRoot, slaveRoot);
 
-        using var host = await CreateHostAsync(_testRootPath);
+        using var host = await CreateHostAsync(TestRootPath);
         await WaitForNodesAsync(host.Services, "local-master", "local-slave");
         var planManager = host.Services.GetRequiredService<ISyncPlanManager>();
 
@@ -122,10 +99,11 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
     public async Task LocalFilesystemPlan_Should_ReturnConflict_WhenBothSidesChangeAfterHistoryCreated()
     {
-        var masterRoot = Path.Combine(_testRootPath, "master-conflict");
-        var slaveRoot = Path.Combine(_testRootPath, "slave-conflict");
+        var masterRoot = Path.Combine(TestRootPath, "master-conflict");
+        var slaveRoot = Path.Combine(TestRootPath, "slave-conflict");
         Directory.CreateDirectory(masterRoot);
         Directory.CreateDirectory(slaveRoot);
 
@@ -133,10 +111,9 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
         var slaveFilePath = Path.Combine(slaveRoot, "conflict.txt");
         await File.WriteAllTextAsync(masterFilePath, "base-version");
 
-        var configPath = Path.Combine(_testRootPath, "appsettings.yaml");
-        await File.WriteAllTextAsync(configPath, CreateTestYaml(masterRoot, slaveRoot));
+        await WriteLocalLocalConfigAsync(masterRoot, slaveRoot);
 
-        using var host = await CreateHostAsync(_testRootPath);
+        using var host = await CreateHostAsync(TestRootPath);
         await WaitForNodesAsync(host.Services, "local-master", "local-slave");
         var planManager = host.Services.GetRequiredService<ISyncPlanManager>();
 
@@ -159,26 +136,25 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
     public async Task LocalFilesystemPlan_Should_DeleteRemoteFile_InPushAndDeleteMode()
     {
-        var masterRoot = Path.Combine(_testRootPath, "master-delete");
-        var slaveRoot = Path.Combine(_testRootPath, "slave-delete");
+        var masterRoot = Path.Combine(TestRootPath, "master-delete");
+        var slaveRoot = Path.Combine(TestRootPath, "slave-delete");
         Directory.CreateDirectory(masterRoot);
         Directory.CreateDirectory(slaveRoot);
 
         var staleFilePath = Path.Combine(slaveRoot, "stale.txt");
         await File.WriteAllTextAsync(staleFilePath, "stale");
 
-        var configPath = Path.Combine(_testRootPath, "appsettings.yaml");
-        await File.WriteAllTextAsync(configPath, CreateTestYaml(masterRoot, slaveRoot, "PushAndDelete"));
+        await WriteLocalLocalConfigAsync(masterRoot, slaveRoot, syncMode: "PushAndDelete");
 
-        using var host = await CreateHostAsync(_testRootPath);
+        using var host = await CreateHostAsync(TestRootPath);
         await WaitForNodesAsync(host.Services, "local-master", "local-slave");
         var planManager = host.Services.GetRequiredService<ISyncPlanManager>();
 
         var results = await planManager.ExecutePlanNowAsync("local-filesystem-test", CancellationToken.None);
-        Assert.NotEmpty(results);
-        Assert.All(results.Values, result => Assert.Contains(result, new[] { SyncTaskResult.Success, SyncTaskResult.NoChanges }));
+        TestAssert.ContainsOnlyExpectedResults(results, SyncTaskResult.Success, SyncTaskResult.NoChanges);
 
         Assert.False(File.Exists(staleFilePath));
 
@@ -186,20 +162,20 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
     public async Task LocalFilesystemPlan_Should_SyncSameSizeContentUpdate()
     {
-        var masterRoot = Path.Combine(_testRootPath, "master-content-update");
-        var slaveRoot = Path.Combine(_testRootPath, "slave-content-update");
+        var masterRoot = Path.Combine(TestRootPath, "master-content-update");
+        var slaveRoot = Path.Combine(TestRootPath, "slave-content-update");
         Directory.CreateDirectory(masterRoot);
         Directory.CreateDirectory(slaveRoot);
 
         var masterFilePath = Path.Combine(masterRoot, "note.txt");
         await File.WriteAllTextAsync(masterFilePath, "hello-1111");
 
-        var configPath = Path.Combine(_testRootPath, "appsettings.yaml");
-        await File.WriteAllTextAsync(configPath, CreateTestYaml(masterRoot, slaveRoot));
+        await WriteLocalLocalConfigAsync(masterRoot, slaveRoot);
 
-        using var host = await CreateHostAsync(_testRootPath);
+        using var host = await CreateHostAsync(TestRootPath);
         await WaitForNodesAsync(host.Services, "local-master", "local-slave");
         var planManager = host.Services.GetRequiredService<ISyncPlanManager>();
 
@@ -219,20 +195,20 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
     public async Task LocalFilesystemPlan_Should_DeleteOtherSideFile_InBidirectionalMode()
     {
-        var masterRoot = Path.Combine(_testRootPath, "master-bidirectional-delete");
-        var slaveRoot = Path.Combine(_testRootPath, "slave-bidirectional-delete");
+        var masterRoot = Path.Combine(TestRootPath, "master-bidirectional-delete");
+        var slaveRoot = Path.Combine(TestRootPath, "slave-bidirectional-delete");
         Directory.CreateDirectory(masterRoot);
         Directory.CreateDirectory(slaveRoot);
 
         var masterFilePath = Path.Combine(masterRoot, "obsolete.txt");
         await File.WriteAllTextAsync(masterFilePath, "remove-me");
 
-        var configPath = Path.Combine(_testRootPath, "appsettings.yaml");
-        await File.WriteAllTextAsync(configPath, CreateTestYaml(masterRoot, slaveRoot));
+        await WriteLocalLocalConfigAsync(masterRoot, slaveRoot);
 
-        using var host = await CreateHostAsync(_testRootPath);
+        using var host = await CreateHostAsync(TestRootPath);
         await WaitForNodesAsync(host.Services, "local-master", "local-slave");
         var planManager = host.Services.GetRequiredService<ISyncPlanManager>();
 
@@ -250,10 +226,11 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
     public async Task LocalFilesystemPlan_Should_KeepNewerMasterVersion_WhenConflictStrategyIsKeepNewer()
     {
-        var masterRoot = Path.Combine(_testRootPath, "master-keep-newer-master");
-        var slaveRoot = Path.Combine(_testRootPath, "slave-keep-newer-master");
+        var masterRoot = Path.Combine(TestRootPath, "master-keep-newer-master");
+        var slaveRoot = Path.Combine(TestRootPath, "slave-keep-newer-master");
         Directory.CreateDirectory(masterRoot);
         Directory.CreateDirectory(slaveRoot);
 
@@ -261,10 +238,9 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
         var slaveFilePath = Path.Combine(slaveRoot, "conflict.txt");
         await File.WriteAllTextAsync(masterFilePath, "base-version");
 
-        var configPath = Path.Combine(_testRootPath, "appsettings.yaml");
-        await File.WriteAllTextAsync(configPath, CreateTestYaml(masterRoot, slaveRoot, conflictResolutionStrategy: "KeepNewer"));
+        await WriteLocalLocalConfigAsync(masterRoot, slaveRoot, conflictResolutionStrategy: "KeepNewer");
 
-        using var host = await CreateHostAsync(_testRootPath);
+        using var host = await CreateHostAsync(TestRootPath);
         await WaitForNodesAsync(host.Services, "local-master", "local-slave");
         var planManager = host.Services.GetRequiredService<ISyncPlanManager>();
         Assert.Equal(ConflictResolutionStrategy.KeepNewer, planManager.GetPlanById("local-filesystem-test")!.SlaveConfigurations[0].ConflictResolutionStrategy);
@@ -286,10 +262,11 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
     public async Task LocalFilesystemPlan_Should_KeepNewerSlaveVersion_WhenConflictStrategyIsKeepNewer()
     {
-        var masterRoot = Path.Combine(_testRootPath, "master-keep-newer-slave");
-        var slaveRoot = Path.Combine(_testRootPath, "slave-keep-newer-slave");
+        var masterRoot = Path.Combine(TestRootPath, "master-keep-newer-slave");
+        var slaveRoot = Path.Combine(TestRootPath, "slave-keep-newer-slave");
         Directory.CreateDirectory(masterRoot);
         Directory.CreateDirectory(slaveRoot);
 
@@ -297,10 +274,9 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
         var slaveFilePath = Path.Combine(slaveRoot, "conflict.txt");
         await File.WriteAllTextAsync(masterFilePath, "base-version");
 
-        var configPath = Path.Combine(_testRootPath, "appsettings.yaml");
-        await File.WriteAllTextAsync(configPath, CreateTestYaml(masterRoot, slaveRoot, conflictResolutionStrategy: "KeepNewer"));
+        await WriteLocalLocalConfigAsync(masterRoot, slaveRoot, conflictResolutionStrategy: "KeepNewer");
 
-        using var host = await CreateHostAsync(_testRootPath);
+        using var host = await CreateHostAsync(TestRootPath);
         await WaitForNodesAsync(host.Services, "local-master", "local-slave");
         var planManager = host.Services.GetRequiredService<ISyncPlanManager>();
         Assert.Equal(ConflictResolutionStrategy.KeepNewer, planManager.GetPlanById("local-filesystem-test")!.SlaveConfigurations[0].ConflictResolutionStrategy);
@@ -322,10 +298,11 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
     public async Task LocalFilesystemPlan_Should_KeepMasterVersion_WhenConflictStrategyIsKeepLocal()
     {
-        var masterRoot = Path.Combine(_testRootPath, "master-keep-local");
-        var slaveRoot = Path.Combine(_testRootPath, "slave-keep-local");
+        var masterRoot = Path.Combine(TestRootPath, "master-keep-local");
+        var slaveRoot = Path.Combine(TestRootPath, "slave-keep-local");
         Directory.CreateDirectory(masterRoot);
         Directory.CreateDirectory(slaveRoot);
 
@@ -333,10 +310,9 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
         var slaveFilePath = Path.Combine(slaveRoot, "conflict.txt");
         await File.WriteAllTextAsync(masterFilePath, "base-version");
 
-        var configPath = Path.Combine(_testRootPath, "appsettings.yaml");
-        await File.WriteAllTextAsync(configPath, CreateTestYaml(masterRoot, slaveRoot, conflictResolutionStrategy: "KeepLocal"));
+        await WriteLocalLocalConfigAsync(masterRoot, slaveRoot, conflictResolutionStrategy: "KeepLocal");
 
-        using var host = await CreateHostAsync(_testRootPath);
+        using var host = await CreateHostAsync(TestRootPath);
         await WaitForNodesAsync(host.Services, "local-master", "local-slave");
         var planManager = host.Services.GetRequiredService<ISyncPlanManager>();
 
@@ -357,10 +333,11 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
     public async Task LocalFilesystemPlan_Should_KeepSlaveVersion_WhenConflictStrategyIsKeepRemote()
     {
-        var masterRoot = Path.Combine(_testRootPath, "master-keep-remote");
-        var slaveRoot = Path.Combine(_testRootPath, "slave-keep-remote");
+        var masterRoot = Path.Combine(TestRootPath, "master-keep-remote");
+        var slaveRoot = Path.Combine(TestRootPath, "slave-keep-remote");
         Directory.CreateDirectory(masterRoot);
         Directory.CreateDirectory(slaveRoot);
 
@@ -368,10 +345,9 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
         var slaveFilePath = Path.Combine(slaveRoot, "conflict.txt");
         await File.WriteAllTextAsync(masterFilePath, "base-version");
 
-        var configPath = Path.Combine(_testRootPath, "appsettings.yaml");
-        await File.WriteAllTextAsync(configPath, CreateTestYaml(masterRoot, slaveRoot, conflictResolutionStrategy: "KeepRemote"));
+        await WriteLocalLocalConfigAsync(masterRoot, slaveRoot, conflictResolutionStrategy: "KeepRemote");
 
-        using var host = await CreateHostAsync(_testRootPath);
+        using var host = await CreateHostAsync(TestRootPath);
         await WaitForNodesAsync(host.Services, "local-master", "local-slave");
         var planManager = host.Services.GetRequiredService<ISyncPlanManager>();
 
@@ -392,9 +368,10 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
     public async Task ImplicitHostLocalPlan_Should_IgnoreInternalHistoryDatabaseFiles()
     {
-        var hostWorkspaceRoot = _testRootPath;
+        var hostWorkspaceRoot = TestRootPath;
         var slaveRoot = Path.Combine(Path.GetTempPath(), "UniversalSyncService-HostLocalSlave", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(slaveRoot);
         Directory.CreateDirectory(Path.Combine(hostWorkspaceRoot, "data"));
@@ -405,10 +382,15 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
         await File.WriteAllTextAsync(Path.Combine(hostWorkspaceRoot, "data", "sync-history.db-shm"), "history-shm");
         await File.WriteAllTextAsync(Path.Combine(hostWorkspaceRoot, "data", "sync-history.db-journal"), "history-journal");
 
-        var configPath = Path.Combine(_testRootPath, "appsettings.yaml");
-        await File.WriteAllTextAsync(configPath, CreateImplicitHostLocalYaml(slaveRoot));
+        await WriteHostLocalConfigAsync(
+            slaveRoot,
+            hostWorkspacePath: ".",
+            planId: "host-local-filesystem-test",
+            planName: "宿主本地节点测试计划",
+            planDescription: "用于验证宿主历史数据库不会被作为同步对象处理。",
+            targetPath: ".");
 
-        using var host = await CreateHostAsync(_testRootPath);
+        using var host = await CreateHostAsync(TestRootPath);
         await WaitForNodesAsync(host.Services, "host-local", "local-slave");
         var planManager = host.Services.GetRequiredService<ISyncPlanManager>();
 
@@ -426,20 +408,26 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
     public async Task HostLocalPlan_Should_AllowAbsoluteTargetPath()
     {
-        var slaveRoot = Path.Combine(_testRootPath, "slave-absolute-target");
-        var masterAbsoluteRoot = Path.Combine(_testRootPath, "absolute-host-target");
+        var slaveRoot = Path.Combine(TestRootPath, "slave-absolute-target");
+        var masterAbsoluteRoot = Path.Combine(TestRootPath, "absolute-host-target");
         Directory.CreateDirectory(slaveRoot);
         Directory.CreateDirectory(masterAbsoluteRoot);
 
         var slaveFilePath = Path.Combine(slaveRoot, "note.txt");
         await File.WriteAllTextAsync(slaveFilePath, "absolute-host-target-data");
 
-        var configPath = Path.Combine(_testRootPath, "appsettings.yaml");
-        await File.WriteAllTextAsync(configPath, CreateHostLocalAbsoluteTargetYaml(slaveRoot, masterAbsoluteRoot));
+        await WriteHostLocalConfigAsync(
+            slaveRoot,
+            hostWorkspacePath: "sync-test/master",
+            planId: "host-local-absolute-target-test",
+            planName: "宿主绝对路径计划",
+            planDescription: "用于验证 host-local 可显式使用绝对目标路径。",
+            targetPath: masterAbsoluteRoot);
 
-        using var host = await CreateHostAsync(_testRootPath);
+        using var host = await CreateHostAsync(TestRootPath);
         await WaitForNodesAsync(host.Services, "host-local", "local-slave");
         var planManager = host.Services.GetRequiredService<ISyncPlanManager>();
 
@@ -453,21 +441,21 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
     public async Task LocalFilesystemPlan_Should_AllowAbsoluteTargetPath_ForRegularLocalMaster()
     {
-        var masterRoot = Path.Combine(_testRootPath, "master-regular-absolute");
-        var slaveRoot = Path.Combine(_testRootPath, "slave-regular-absolute");
-        var absoluteTarget = Path.Combine(_testRootPath, "absolute-target");
+        var masterRoot = Path.Combine(TestRootPath, "master-regular-absolute");
+        var slaveRoot = Path.Combine(TestRootPath, "slave-regular-absolute");
+        var absoluteTarget = Path.Combine(TestRootPath, "absolute-target");
         Directory.CreateDirectory(masterRoot);
         Directory.CreateDirectory(slaveRoot);
         Directory.CreateDirectory(absoluteTarget);
 
         await File.WriteAllTextAsync(Path.Combine(slaveRoot, "local-master-absolute.txt"), "from-local-slave");
 
-        var configPath = Path.Combine(_testRootPath, "appsettings.yaml");
-        await File.WriteAllTextAsync(configPath, CreateRegularLocalAbsoluteTargetYaml(masterRoot, slaveRoot, absoluteTarget));
+        await WriteLocalLocalConfigAsync(masterRoot, slaveRoot, targetPath: absoluteTarget);
 
-        using var host = await CreateHostAsync(_testRootPath);
+        using var host = await CreateHostAsync(TestRootPath);
         await WaitForNodesAsync(host.Services, "local-master", "local-slave");
         var planManager = host.Services.GetRequiredService<ISyncPlanManager>();
 
@@ -481,21 +469,21 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
     public async Task LocalFilesystemPlan_Should_AllowAbsoluteSourcePath_ForRegularLocalSlave()
     {
-        var masterRoot = Path.Combine(_testRootPath, "master-local-absolute-source");
-        var slaveRoot = Path.Combine(_testRootPath, "slave-local-absolute-source");
-        var absoluteSlaveSource = Path.Combine(_testRootPath, "absolute-slave-source");
+        var masterRoot = Path.Combine(TestRootPath, "master-local-absolute-source");
+        var slaveRoot = Path.Combine(TestRootPath, "slave-local-absolute-source");
+        var absoluteSlaveSource = Path.Combine(TestRootPath, "absolute-slave-source");
         Directory.CreateDirectory(masterRoot);
         Directory.CreateDirectory(slaveRoot);
         Directory.CreateDirectory(absoluteSlaveSource);
 
         await File.WriteAllTextAsync(Path.Combine(absoluteSlaveSource, "local-slave-absolute.txt"), "from-local-absolute-source");
 
-        var configPath = Path.Combine(_testRootPath, "appsettings.yaml");
-        await File.WriteAllTextAsync(configPath, CreateRegularLocalAbsoluteSourceYaml(masterRoot, slaveRoot, absoluteSlaveSource));
+        await WriteLocalLocalConfigAsync(masterRoot, slaveRoot, sourcePath: absoluteSlaveSource);
 
-        using var host = await CreateHostAsync(_testRootPath);
+        using var host = await CreateHostAsync(TestRootPath);
         await WaitForNodesAsync(host.Services, "local-master", "local-slave");
         var planManager = host.Services.GetRequiredService<ISyncPlanManager>();
 
@@ -509,19 +497,17 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "AuthNegative")]
     public async Task OneDriveSlavePlan_Should_RejectAbsoluteSourcePath_ForNonLocalNode()
     {
-        var masterRoot = Path.Combine(_testRootPath, "master-onedrive-absolute-reject");
-        var slaveRoot = Path.Combine(_testRootPath, "slave-onedrive-absolute-reject");
-        var forbiddenAbsoluteSource = Path.Combine(_testRootPath, "forbidden-onedrive-source");
+        var masterRoot = Path.Combine(TestRootPath, "master-onedrive-absolute-reject");
+        var forbiddenAbsoluteSource = Path.Combine(TestRootPath, "forbidden-onedrive-source");
         Directory.CreateDirectory(masterRoot);
-        Directory.CreateDirectory(slaveRoot);
         Directory.CreateDirectory(forbiddenAbsoluteSource);
 
-        var configPath = Path.Combine(_testRootPath, "appsettings.yaml");
-        await File.WriteAllTextAsync(configPath, CreateOneDriveSlaveAbsoluteSourceYaml(masterRoot, slaveRoot, forbiddenAbsoluteSource));
+        await WriteOneDriveAuthNegativeConfigAsync(masterRoot, forbiddenAbsoluteSource);
 
-        using var host = await CreateHostAsync(_testRootPath);
+        using var host = await CreateHostAsync(TestRootPath);
         await WaitForNodesAsync(host.Services, "local-master", "one-drive-slave");
         var planManager = host.Services.GetRequiredService<ISyncPlanManager>();
 
@@ -530,6 +516,11 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
         Assert.Contains("本地节点（Local/host-local）", exception.Message);
 
         await host.StopAsync();
+    }
+
+    private async Task InitializeCoreAsync()
+    {
+        _testRoot = await TempContentRoot.CreateAsync("UniversalSyncService-Integration");
     }
 
     private static async Task<IHost> CreateHostAsync(string contentRoot)
@@ -574,239 +565,69 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
         throw new TimeoutException("节点注册表未在预期时间内完成加载。");
     }
 
-    private static string CreateTestYaml(string masterRoot, string slaveRoot, string syncMode = "Bidirectional", string conflictResolutionStrategy = "Manual")
+    private async Task WriteLocalLocalConfigAsync(
+        string masterRoot,
+        string slaveRoot,
+        string syncMode = "Bidirectional",
+        string conflictResolutionStrategy = "Manual",
+        string sourcePath = ".",
+        string targetPath = ".")
     {
-        return $@"UniversalSyncService:
-  Service:
-    ServiceName: ""IntegrationTestHost""
-    HeartbeatIntervalSeconds: 60
-  Interface:
-    EnableGrpc: true
-    EnableHttpApi: true
-    EnableWebConsole: true
-    ManagementApiKey: ""test-key""
-  Logging:
-    MinimumLevel: ""Information""
-    EnableConsoleSink: false
-    EnableFileSink: false
-    Overrides: {{}}
-    File:
-      Path: ""logs/test-.log""
-      RollingInterval: ""Day""
-      RetainedFileCountLimit: 2
-      FileSizeLimitBytes: 1048576
-      RollOnFileSizeLimit: true
-      OutputTemplate: ""{{Message:lj}}{{NewLine}}{{Exception}}""
-  Plugins:
-    EnablePluginSystem: false
-    PluginDirectory: ""plugins""
-    Descriptors: []
-  Sync:
-    EnableSyncFramework: true
-    SchedulerPollingIntervalSeconds: 60
-    MaxConcurrentTasks: 1
-    HistoryRetentionVersions: 20
-    HistoryStorePath: ""data/sync-history.db""
-    Nodes:
-      - Id: ""local-master""
-        Name: ""本地主节点""
-        NodeType: ""Local""
-        ConnectionSettings:
-          RootPath: ""{masterRoot.Replace("\\", "/")}""
-        CustomOptions: {{}}
-        CreatedAt: ""2026-04-09T00:00:00+08:00""
-        ModifiedAt: ""2026-04-09T00:00:00+08:00""
-        IsEnabled: true
-      - Id: ""local-slave""
-        Name: ""本地从节点""
-        NodeType: ""Local""
-        ConnectionSettings:
-          RootPath: ""{slaveRoot.Replace("\\", "/")}""
-        CustomOptions: {{}}
-        CreatedAt: ""2026-04-09T00:00:00+08:00""
-        ModifiedAt: ""2026-04-09T00:00:00+08:00""
-        IsEnabled: true
-    Plans:
-      - Id: ""local-filesystem-test""
-        Name: ""本地文件系统测试计划""
-        Description: ""用于本地节点与普通文件系统同步对象的功能测试。""
-        MasterNodeId: ""local-master""
-        SyncItemType: ""FileSystem""
-        SlaveConfigurations:
-          - SlaveNodeId: ""local-slave""
-            SyncMode: ""{syncMode}""
-            SourcePath: "".""
-            TargetPath: "".""
-            EnableDeletionProtection: true
-            ConflictResolutionStrategy: ""{conflictResolutionStrategy}""
-            Filters: []
-            Exclusions: []
-        Schedule:
-          TriggerType: ""Manual""
-          EnableFileSystemWatcher: false
-        IsEnabled: false
-        CreatedAt: ""2026-04-09T00:00:00+08:00""
-        ModifiedAt: ""2026-04-09T00:00:00+08:00""
-        ExecutionCount: 0
-";
+        await ConfigLoader.WriteYamlAsync(
+            outputDirectory: TestRootPath,
+            templatePath: TestConfigPaths.GetTemplatePath("integration.test.yaml"),
+            localOverridePath: TestConfigPaths.GetLocalOverridePath("integration.test.yaml"),
+            placeholders: new Dictionary<string, string>
+            {
+                ["MASTER_ROOT"] = masterRoot.Replace("\\", "/"),
+                ["SLAVE_ROOT"] = slaveRoot.Replace("\\", "/"),
+                ["SYNC_MODE"] = syncMode,
+                ["CONFLICT_RESOLUTION_STRATEGY"] = conflictResolutionStrategy,
+                ["SOURCE_PATH"] = sourcePath.Replace("\\", "/"),
+                ["TARGET_PATH"] = targetPath.Replace("\\", "/")
+            });
     }
 
-    private static string CreateImplicitHostLocalYaml(string slaveRoot)
+    private async Task WriteHostLocalConfigAsync(
+        string slaveRoot,
+        string hostWorkspacePath,
+        string planId,
+        string planName,
+        string planDescription,
+        string targetPath)
     {
-        return $@"UniversalSyncService:
-  Service:
-    ServiceName: ""IntegrationTestHost""
-    HeartbeatIntervalSeconds: 60
-  Interface:
-    EnableGrpc: true
-    EnableHttpApi: true
-    EnableWebConsole: true
-    ManagementApiKey: ""test-key""
-  Logging:
-    MinimumLevel: ""Information""
-    EnableConsoleSink: false
-    EnableFileSink: false
-    Overrides: {{}}
-    File:
-      Path: ""logs/test-.log""
-      RollingInterval: ""Day""
-      RetainedFileCountLimit: 2
-      FileSizeLimitBytes: 1048576
-      RollOnFileSizeLimit: true
-      OutputTemplate: ""{{Message:lj}}{{NewLine}}{{Exception}}""
-  Plugins:
-    EnablePluginSystem: false
-    PluginDirectory: ""plugins""
-    Descriptors: []
-  Sync:
-    EnableSyncFramework: true
-    SchedulerPollingIntervalSeconds: 60
-    MaxConcurrentTasks: 1
-    HistoryRetentionVersions: 20
-    HistoryStorePath: ""data/sync-history.db""
-    HostWorkspacePath: "".""
-    Nodes:
-      - Id: ""local-slave""
-        Name: ""本地从节点""
-        NodeType: ""Local""
-        ConnectionSettings:
-          RootPath: ""{slaveRoot.Replace("\\", "/")}""
-        CustomOptions: {{}}
-        CreatedAt: ""2026-04-09T00:00:00+08:00""
-        ModifiedAt: ""2026-04-09T00:00:00+08:00""
-        IsEnabled: true
-    Plans:
-      - Id: ""host-local-filesystem-test""
-        Name: ""宿主本地节点测试计划""
-        Description: ""用于验证宿主历史数据库不会被作为同步对象处理。""
-        MasterNodeId: ""host-local""
-        SyncItemType: ""FileSystem""
-        SlaveConfigurations:
-          - SlaveNodeId: ""local-slave""
-            SyncMode: ""Bidirectional""
-            SourcePath: "".""
-            TargetPath: "".""
-            EnableDeletionProtection: true
-            ConflictResolutionStrategy: ""Manual""
-            Filters: []
-            Exclusions: []
-        Schedule:
-          TriggerType: ""Manual""
-          EnableFileSystemWatcher: false
-        IsEnabled: false
-        CreatedAt: ""2026-04-09T00:00:00+08:00""
-        ModifiedAt: ""2026-04-09T00:00:00+08:00""
-        ExecutionCount: 0
-";
+        await ConfigLoader.WriteYamlAsync(
+            outputDirectory: TestRootPath,
+            templatePath: TestConfigPaths.GetTemplatePath("integration.host-local.test.yaml"),
+            localOverridePath: TestConfigPaths.GetLocalOverridePath("integration.host-local.test.yaml"),
+            placeholders: new Dictionary<string, string>
+            {
+                ["SLAVE_ROOT"] = slaveRoot.Replace("\\", "/"),
+                ["HOST_WORKSPACE_PATH"] = hostWorkspacePath,
+                ["PLAN_ID"] = planId,
+                ["PLAN_NAME"] = planName,
+                ["PLAN_DESCRIPTION"] = planDescription,
+                ["TARGET_PATH"] = targetPath.Replace("\\", "/")
+            });
     }
 
-    private static string CreateHostLocalAbsoluteTargetYaml(string slaveRoot, string masterAbsoluteRoot)
+    private async Task WriteOneDriveAuthNegativeConfigAsync(string masterRoot, string absoluteSourcePath)
     {
-        return $@"UniversalSyncService:
-  Service:
-    ServiceName: ""IntegrationTestHost""
-    HeartbeatIntervalSeconds: 60
-  Interface:
-    EnableGrpc: true
-    EnableHttpApi: true
-    EnableWebConsole: true
-    ManagementApiKey: ""test-key""
-  Logging:
-    MinimumLevel: ""Information""
-    EnableConsoleSink: false
-    EnableFileSink: false
-    Overrides: {{}}
-    File:
-      Path: ""logs/test-.log""
-      RollingInterval: ""Day""
-      RetainedFileCountLimit: 2
-      FileSizeLimitBytes: 1048576
-      RollOnFileSizeLimit: true
-      OutputTemplate: ""{{Message:lj}}{{NewLine}}{{Exception}}""
-  Plugins:
-    EnablePluginSystem: false
-    PluginDirectory: ""plugins""
-    Descriptors: []
-  Sync:
-    EnableSyncFramework: true
-    SchedulerPollingIntervalSeconds: 60
-    MaxConcurrentTasks: 1
-    HistoryRetentionVersions: 20
-    HistoryStorePath: ""data/sync-history.db""
-    HostWorkspacePath: ""sync-test/master""
-    Nodes:
-      - Id: ""local-slave""
-        Name: ""本地从节点""
-        NodeType: ""Local""
-        ConnectionSettings:
-          RootPath: ""{slaveRoot.Replace("\\", "/")}""
-        CustomOptions: {{}}
-        CreatedAt: ""2026-04-09T00:00:00+08:00""
-        ModifiedAt: ""2026-04-09T00:00:00+08:00""
-        IsEnabled: true
-    Plans:
-      - Id: ""host-local-absolute-target-test""
-        Name: ""宿主绝对路径计划""
-        Description: ""用于验证 host-local 可显式使用绝对目标路径。""
-        MasterNodeId: ""host-local""
-        SyncItemType: ""FileSystem""
-        SlaveConfigurations:
-          - SlaveNodeId: ""local-slave""
-            SyncMode: ""Bidirectional""
-            SourcePath: "".""
-            TargetPath: ""{masterAbsoluteRoot.Replace("\\", "/")}""
-            EnableDeletionProtection: true
-            ConflictResolutionStrategy: ""Manual""
-            Filters: []
-            Exclusions: []
-        Schedule:
-          TriggerType: ""Manual""
-          EnableFileSystemWatcher: false
-        IsEnabled: false
-        CreatedAt: ""2026-04-09T00:00:00+08:00""
-        ModifiedAt: ""2026-04-09T00:00:00+08:00""
-        ExecutionCount: 0
-";
-    }
+        var authNegativeSlaveRoot = Path.Combine(TestRootPath, "slave-onedrive-absolute-reject");
+        Directory.CreateDirectory(authNegativeSlaveRoot);
 
-    private static string CreateRegularLocalAbsoluteTargetYaml(string masterRoot, string slaveRoot, string absoluteTargetPath)
-    {
-        return CreateTestYaml(masterRoot, slaveRoot).Replace("TargetPath: \".\"", $"TargetPath: \"{absoluteTargetPath.Replace("\\", "/")}\"");
-    }
-
-    private static string CreateRegularLocalAbsoluteSourceYaml(string masterRoot, string slaveRoot, string absoluteSourcePath)
-    {
-        return CreateTestYaml(masterRoot, slaveRoot).Replace("SourcePath: \".\"", $"SourcePath: \"{absoluteSourcePath.Replace("\\", "/")}\"");
-    }
-
-    private static string CreateOneDriveSlaveAbsoluteSourceYaml(string masterRoot, string slaveRoot, string absoluteSourcePath)
-    {
-        return CreateTestYaml(masterRoot, slaveRoot)
-            .Replace("Id: \"local-slave\"", "Id: \"one-drive-slave\"")
-            .Replace("Name: \"本地从节点\"", "Name: \"OneDrive 从节点\"")
-            .Replace("NodeType: \"Local\"", "NodeType: \"OneDrive\"")
-            .Replace($"RootPath: \"{slaveRoot.Replace("\\", "/")}\"", "RootPath: \"Apps/UniversalSyncService\"")
-            .Replace("SlaveNodeId: \"local-slave\"", "SlaveNodeId: \"one-drive-slave\"")
-            .Replace("SourcePath: \".\"", $"SourcePath: \"{absoluteSourcePath.Replace("\\", "/")}\"");
+        await ConfigLoader.WriteYamlAsync(
+            outputDirectory: TestRootPath,
+            templatePath: TestConfigPaths.GetTemplatePath("integration.authnegative.onedrive.test.yaml"),
+            localOverridePath: TestConfigPaths.GetLocalOverridePath("integration.authnegative.onedrive.test.yaml"),
+            placeholders: new Dictionary<string, string>
+            {
+                ["MASTER_ROOT"] = masterRoot.Replace("\\", "/"),
+                ["SLAVE_ROOT"] = authNegativeSlaveRoot.Replace("\\", "/"),
+                ["SYNC_MODE"] = "Bidirectional",
+                ["CONFLICT_RESOLUTION_STRATEGY"] = "Manual",
+                ["SOURCE_PATH"] = absoluteSourcePath.Replace("\\", "/"),
+                ["TARGET_PATH"] = "."
+            });
     }
 }

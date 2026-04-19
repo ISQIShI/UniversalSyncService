@@ -21,6 +21,7 @@
     <ProjectReference Include="..\..\UniversalSyncService.Abstractions\UniversalSyncService.Abstractions.csproj" />
     <ProjectReference Include="..\..\UniversalSyncService.Core\UniversalSyncService.Core.csproj" />
     <ProjectReference Include="..\..\UniversalSyncService.Host\UniversalSyncService.Host.csproj" />
+    <ProjectReference Include="..\UniversalSyncService.Testing\UniversalSyncService.Testing.csproj" />
   </ItemGroup>
 
 </Project>

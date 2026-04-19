@@ -126,7 +126,7 @@ public sealed class OneDriveNodeProvider : INodeProvider
         var normalizedRoot = NormalizeRemotePath(options.RootPath);
         if (string.IsNullOrWhiteSpace(scopedPath) || string.Equals(scopedPath.Trim(), ".", StringComparison.Ordinal))
         {
-            return normalizedRoot;
+            return FormatDisplayRootPath(options.RootPath) ?? "/";
         }
 
         if (string.Equals(scopedPath.Trim(), "..", StringComparison.Ordinal) || scopedPath.Contains("../", StringComparison.Ordinal) || scopedPath.Contains("..\\", StringComparison.Ordinal))
@@ -140,9 +140,10 @@ public sealed class OneDriveNodeProvider : INodeProvider
         }
 
         var normalizedScopedPath = NormalizeRemotePath(scopedPath);
-        return string.IsNullOrWhiteSpace(normalizedRoot)
+        var resolvedRoot = string.IsNullOrWhiteSpace(normalizedRoot)
             ? normalizedScopedPath
             : $"{normalizedRoot}/{normalizedScopedPath}";
+        return string.IsNullOrWhiteSpace(resolvedRoot) ? "/" : $"/{resolvedRoot}";
     }
 
     public string? GetDisplayRootPath(NodeConfiguration configuration)
@@ -155,7 +156,8 @@ public sealed class OneDriveNodeProvider : INodeProvider
 
     private OneDriveNodeOptions CreateOptionsWithDefaults(IDictionary<string, string> connectionSettings)
     {
-        var options = OneDriveNodeOptions.FromConnectionSettings(connectionSettings);
+        // 运行时兼容：保留旧环境变量回退能力；测试路径请使用 FromConnectionSettings（无 env fallback）。
+        var options = OneDriveNodeOptions.FromConnectionSettingsWithDeprecatedEnvironmentFallback(connectionSettings);
 
         // 如果配置中未提供 ClientId，尝试从应用程序凭据存储加载。
         if (string.IsNullOrWhiteSpace(options.ClientId))

@@ -5,5 +5,6 @@
   <Project Path="UniversalSyncService/UniversalSyncService.csproj" Id="dce848e5-c4f8-431e-be8c-6236a92685f1" />
   <Project Path="tests/UniversalSyncService.IntegrationTests/UniversalSyncService.IntegrationTests.csproj" />
   <Project Path="tests/UniversalSyncService.Host.IntegrationTests/UniversalSyncService.Host.IntegrationTests.csproj" />
-  <Project Path="tools/OneDriveCredentialConfigurator/OneDriveCredentialConfigurator.csproj" />
+  <Project Path="tests/UniversalSyncService.Testing/UniversalSyncService.Testing.csproj" />
+  <Project Path="tests/Support/UniversalSyncService.OneDriveCredentialConfigurator/OneDriveCredentialConfigurator.csproj" />
 </Solution>

@@ -6,6 +6,8 @@ namespace UniversalSyncService.Core.Nodes.OneDrive;
 public sealed class OneDriveNodeOptions
 {
     private static readonly char[] InvalidPathCharacters = ['"', '*', ':', '<', '>', '?', '\\', '|'];
+    private const string OneDriveClientIdEnvVar = "ONEDRIVE_CLIENT_ID";
+    private const string OneDriveTenantIdEnvVar = "ONEDRIVE_TENANT_ID";
 
     /// <summary>
     /// Azure AD 租户 ID。
@@ -99,20 +101,47 @@ public sealed class OneDriveNodeOptions
 
     /// <summary>
     /// 从 NodeConfiguration.ConnectionSettings 解析配置。
-    /// 配置优先级：ConnectionSettings > 环境变量 > 默认值
+    /// 配置优先级：ConnectionSettings > 默认值。
+    ///
+    /// 说明：测试路径必须使用此入口，避免隐式读取环境变量导致结果不稳定。
     /// </summary>
     public static OneDriveNodeOptions FromConnectionSettings(IDictionary<string, string> settings)
     {
+        return FromConnectionSettingsCore(settings, enableDeprecatedEnvironmentFallback: false);
+    }
+
+    /// <summary>
+    /// 【Deprecated】兼容旧路径：允许在未提供 ConnectionSettings 时回退读取环境变量。
+    /// 仅用于非测试运行时迁移兼容；测试路径禁止调用。
+    /// 配置优先级：ConnectionSettings > 环境变量 > 默认值。
+    /// </summary>
+    public static OneDriveNodeOptions FromConnectionSettingsWithDeprecatedEnvironmentFallback(IDictionary<string, string> settings)
+    {
+        return FromConnectionSettingsCore(settings, enableDeprecatedEnvironmentFallback: true);
+    }
+
+    private static OneDriveNodeOptions FromConnectionSettingsCore(
+        IDictionary<string, string> settings,
+        bool enableDeprecatedEnvironmentFallback)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
         var options = new OneDriveNodeOptions();
 
-        options.ClientId = Environment.GetEnvironmentVariable("ONEDRIVE_CLIENT_ID") ?? options.ClientId;
-        options.TenantId = Environment.GetEnvironmentVariable("ONEDRIVE_TENANT_ID") ?? options.TenantId;
+        var hasTenantId = false;
+        var hasClientId = false;
 
         if (settings.TryGetValue("TenantId", out var tenantId))
+        {
             options.TenantId = tenantId;
+            hasTenantId = true;
+        }
 
         if (settings.TryGetValue("ClientId", out var clientId))
+        {
             options.ClientId = clientId;
+            hasClientId = true;
+        }
 
         if (settings.TryGetValue("AuthMode", out var authMode))
             options.AuthMode = authMode;
@@ -161,6 +190,28 @@ public sealed class OneDriveNodeOptions
         if (settings.TryGetValue("InteractiveBrowserRedirectPort", out var redirectPort))
             if (int.TryParse(redirectPort, out var rpValue))
                 options.InteractiveBrowserRedirectPort = rpValue;
+
+        if (enableDeprecatedEnvironmentFallback)
+        {
+            // 仅在运行时兼容旧配置；测试路径禁止依赖该回退。
+            if (!hasClientId)
+            {
+                var envClientId = Environment.GetEnvironmentVariable(OneDriveClientIdEnvVar);
+                if (!string.IsNullOrWhiteSpace(envClientId))
+                {
+                    options.ClientId = envClientId;
+                }
+            }
+
+            if (!hasTenantId)
+            {
+                var envTenantId = Environment.GetEnvironmentVariable(OneDriveTenantIdEnvVar);
+                if (!string.IsNullOrWhiteSpace(envTenantId))
+                {
+                    options.TenantId = envTenantId;
+                }
+            }
+        }
 
         return options;
     }

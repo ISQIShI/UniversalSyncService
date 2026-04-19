@@ -1,9 +1,11 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Text.RegularExpressions;
 using UniversalSyncService.Abstractions.Nodes;
 using UniversalSyncService.Abstractions.SyncItems;
 using UniversalSyncService.Abstractions.SyncManagement.ConfigNodes;
 using UniversalSyncService.Core.Nodes.OneDrive;
+using UniversalSyncService.Testing;
 using Xunit;
 
 namespace UniversalSyncService.IntegrationTests.Nodes.OneDrive;
@@ -12,16 +14,15 @@ namespace UniversalSyncService.IntegrationTests.Nodes.OneDrive;
 /// OneDrive 节点集成测试。
 /// 
 /// 三车道分类：
-/// 1) WarmAuth-Auto：使用已持久化认证记录，默认无人值守执行（需显式开关）；
-/// 2) ColdAuth-Manual：需要人工交互授权；
-/// 3) ExpiredAuth-Negative：认证记录缺失/损坏时的受控失败语义。
+/// 1) OnlineWarmAuth：使用已持久化认证记录，缺少前置条件时 Skip；
+/// 2) OnlineColdAuth：需要人工交互授权，默认通过本地覆盖显式启用；
+/// 3) AuthNegative：认证缺失/损坏时的受控失败语义（不 Skip，执行失败即 Fail）。
 /// </summary>
 public class OneDriveNodeIntegrationTests
 {
     private const string TestRootFolder = "UniversalSyncTest";
-    private const string WarmAuthEnvVar = "ONEDRIVE_ENABLE_WARM_AUTH_TESTS";
-    private const string InteractiveBrowserEnvVar = "ONEDRIVE_ENABLE_INTERACTIVE_BROWSER_TESTS";
-    private const string TestClientIdEnvVar = "ONEDRIVE_TEST_CLIENT_ID";
+    private const string OneDriveTestConfigFileName = "onedrive.test.yaml";
+    private const string PlaceholderClientId = "PLACEHOLDER_CLIENT_ID";
 
     private readonly ILogger<OneDriveNode> _logger;
     private readonly ILogger<OneDriveGraphClientFactory> _factoryLogger;
@@ -34,54 +35,179 @@ public class OneDriveNodeIntegrationTests
         _loggerFactory = NullLoggerFactory.Instance;
     }
 
-    private static void SkipIfWarmAuthTestsNotExplicitlyEnabled()
+    private sealed record OneDriveLaneConfiguration(
+        string? ClientId,
+        string TenantId,
+        bool EnableOnlineColdAuth,
+        string TemplatePath,
+        string LocalOverridePath,
+        bool LocalOverrideExists,
+        string? CredentialSource);
+
+    private static async Task<OneDriveLaneConfiguration> GetOnlineWarmAuthLaneConfigurationOrSkipAsync()
     {
-        var enableWarmAuthTests = Environment.GetEnvironmentVariable(WarmAuthEnvVar);
-        Skip.If(!string.Equals(enableWarmAuthTests, "1", StringComparison.Ordinal),
-            $"WarmAuth 在线测试需要显式设置 {WarmAuthEnvVar}=1 后才运行，避免在未准备好持久化认证记录时误触发交互流程。");
+        var configuration = ResolveLaneConfiguration();
+
+        Skip.If(string.IsNullOrWhiteSpace(configuration.ClientId),
+            "OnlineWarmAuth 车道前置检查失败：未在模板/本地覆盖/本地持久化凭据中解析到有效 ClientId。\n" +
+            $"模板路径：{configuration.TemplatePath}\n" +
+            $"本地覆盖路径：{configuration.LocalOverridePath}（存在={configuration.LocalOverrideExists}）\n" +
+            "请先通过 OneDriveCredentialConfigurator 写入本地凭据，或在 tests/Config/Local/onedrive.test.yaml 中配置 ClientId。"
+        );
+
+        try
+        {
+            await OneDriveTestBootstrap.EnsureWarmAuthRecordReadyAsync(configuration.ClientId!, CancellationToken.None);
+        }
+        catch (InvalidOperationException ex)
+        {
+            Skip.If(true,
+                "OnlineWarmAuth 车道前置检查失败：缺少可复用的持久化认证记录，按设计 Skip。\n" +
+                $"{ex.Message}\n" +
+                "请先执行一次 OnlineColdAuth 手工授权，生成 authrecord 后再运行 OnlineWarmAuth。"
+            );
+        }
+
+        return configuration;
     }
 
-    private static void SkipIfInteractiveBrowserTestsNotExplicitlyEnabled()
+    private static OneDriveLaneConfiguration GetOnlineColdAuthLaneConfigurationOrSkip(bool requiresInteractiveConsole)
     {
-        var isCi = Environment.GetEnvironmentVariable("CI");
-        Skip.If(!string.IsNullOrWhiteSpace(isCi),
-            "ColdAuth 手工交互测试禁止在 CI 环境执行，请仅在本地交互终端运行。");
+        var configuration = ResolveLaneConfiguration();
 
-        var enableInteractiveBrowserTests = Environment.GetEnvironmentVariable(InteractiveBrowserEnvVar);
-        Skip.If(!string.Equals(enableInteractiveBrowserTests, "1", StringComparison.Ordinal),
-            $"ColdAuth 手工交互测试需要显式设置 {InteractiveBrowserEnvVar}=1 后才运行，避免在无人值守环境中卡住或占用本地回调端口。");
+        Skip.If(!configuration.EnableOnlineColdAuth,
+            "OnlineColdAuth 车道默认不自动执行。\n" +
+            "请在 tests/Config/Local/onedrive.test.yaml 中显式设置 EnableOnlineColdAuth: true 后重试。"
+        );
+
+        Skip.If(!Environment.UserInteractive,
+            "OnlineColdAuth 需要交互式用户会话，当前非交互环境，按设计 Skip。"
+        );
+
+        if (requiresInteractiveConsole)
+        {
+            Skip.If(Console.IsInputRedirected || Console.IsOutputRedirected,
+                "OnlineColdAuth(DeviceCode) 需要交互式控制台，当前 I/O 被重定向，按设计 Skip。"
+            );
+        }
+
+        Skip.If(string.IsNullOrWhiteSpace(configuration.ClientId),
+            "OnlineColdAuth 车道前置检查失败：未在模板/本地覆盖/本地持久化凭据中解析到有效 ClientId，按设计 Skip。"
+        );
+
+        return configuration;
     }
 
-    private static string GetClientIdOrSkip(string laneName)
+    private static OneDriveLaneConfiguration ResolveLaneConfiguration()
     {
-        var clientId = Environment.GetEnvironmentVariable(TestClientIdEnvVar);
-        Skip.If(string.IsNullOrWhiteSpace(clientId),
-            $"{laneName} 需要设置 {TestClientIdEnvVar} 环境变量。\n" +
-            "请先通过 OneDriveCredentialConfigurator 配置应用凭据后再运行。" );
+        var templatePath = OneDriveTestBootstrap.GetTemplatePath(OneDriveTestConfigFileName);
+        var localOverridePath = OneDriveTestBootstrap.GetLocalOverridePath(OneDriveTestConfigFileName);
 
-        return clientId!;
+        var templateValues = ReadOneDriveConfigValues(templatePath);
+        var localOverrideExists = File.Exists(localOverridePath);
+        var localValues = localOverrideExists
+            ? ReadOneDriveConfigValues(localOverridePath)
+            : (ClientId: (string?)null, TenantId: (string?)null, EnableOnlineColdAuth: (bool?)null);
+
+        var resolvedClientId = NormalizeClientId(templateValues.ClientId);
+        var resolvedTenantId = NormalizeTenantId(templateValues.TenantId) ?? "common";
+        var enableOnlineColdAuth = templateValues.EnableOnlineColdAuth ?? false;
+        var credentialSource = "template";
+
+        if (!string.IsNullOrWhiteSpace(localValues.ClientId))
+        {
+            resolvedClientId = NormalizeClientId(localValues.ClientId);
+            credentialSource = "local-override";
+        }
+
+        if (!string.IsNullOrWhiteSpace(localValues.TenantId))
+        {
+            resolvedTenantId = NormalizeTenantId(localValues.TenantId) ?? resolvedTenantId;
+        }
+
+        if (localValues.EnableOnlineColdAuth.HasValue)
+        {
+            enableOnlineColdAuth = localValues.EnableOnlineColdAuth.Value;
+        }
+
+        // 第三层：本地持久化凭据注入（最终覆盖）。
+        var persistedCredentials = OneDriveAppCredentials.LoadCredentials();
+        if (persistedCredentials is not null)
+        {
+            resolvedClientId = NormalizeClientId(persistedCredentials.ClientId);
+            resolvedTenantId = NormalizeTenantId(persistedCredentials.TenantId) ?? resolvedTenantId;
+            credentialSource = "persisted-credentials";
+        }
+
+        return new OneDriveLaneConfiguration(
+            resolvedClientId,
+            resolvedTenantId,
+            enableOnlineColdAuth,
+            templatePath,
+            localOverridePath,
+            localOverrideExists,
+            credentialSource);
     }
 
-    private static string GetWarmAuthClientIdOrSkip()
+    private static (string? ClientId, string? TenantId, bool? EnableOnlineColdAuth) ReadOneDriveConfigValues(string configPath)
     {
-        SkipIfWarmAuthTestsNotExplicitlyEnabled();
-        var clientId = GetClientIdOrSkip("WarmAuth");
+        if (!File.Exists(configPath))
+        {
+            return (null, null, null);
+        }
 
-        var hasAuthRecord = OneDriveAuthenticationRecordStore.Exists(clientId);
-        var authRecordPath = OneDriveAuthenticationRecordStore.GetRecordPath(clientId);
-        Skip.If(!hasAuthRecord,
-            "WarmAuth 车道要求存在持久化认证记录（authrecord），用于静默续期。\n" +
-            $"当前未找到记录：{authRecordPath}。\n" +
-            "请先执行一次 ColdAuth 交互授权生成记录。" );
+        var content = File.ReadAllText(configPath);
+        var clientId = ReadYamlScalar(content, "ClientId");
+        var tenantId = ReadYamlScalar(content, "TenantId");
+        var enableOnlineColdAuth = ReadYamlBoolean(content, "EnableOnlineColdAuth");
 
-        return clientId;
+        return (clientId, tenantId, enableOnlineColdAuth);
     }
 
-    private static OneDriveNodeOptions CreateOnlineOptions(string clientId, string authMode, string? rootPath = null)
+    private static string? ReadYamlScalar(string yamlContent, string key)
+    {
+        var match = Regex.Match(yamlContent, $"{Regex.Escape(key)}\\s*:\\s*\"?(?<value>[^\"\\r\\n#]+)\"?", RegexOptions.IgnoreCase);
+        return match.Success ? match.Groups["value"].Value.Trim() : null;
+    }
+
+    private static bool? ReadYamlBoolean(string yamlContent, string key)
+    {
+        var rawValue = ReadYamlScalar(yamlContent, key);
+        if (string.IsNullOrWhiteSpace(rawValue))
+        {
+            return null;
+        }
+
+        return rawValue.Equals("true", StringComparison.OrdinalIgnoreCase)
+            || rawValue.Equals("1", StringComparison.OrdinalIgnoreCase)
+            || rawValue.Equals("yes", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? NormalizeClientId(string? rawClientId)
+    {
+        if (string.IsNullOrWhiteSpace(rawClientId))
+        {
+            return null;
+        }
+
+        var normalized = rawClientId.Trim();
+        return normalized.Equals(PlaceholderClientId, StringComparison.OrdinalIgnoreCase)
+            ? null
+            : normalized;
+    }
+
+    private static string? NormalizeTenantId(string? rawTenantId)
+    {
+        return string.IsNullOrWhiteSpace(rawTenantId)
+            ? null
+            : rawTenantId.Trim();
+    }
+
+    private static OneDriveNodeOptions CreateOnlineOptions(string clientId, string tenantId, string authMode, string? rootPath = null)
     {
         return new OneDriveNodeOptions
         {
-            TenantId = "common",
+            TenantId = tenantId,
             ClientId = clientId,
             AuthMode = authMode,
             RootPath = rootPath ?? "/",
@@ -203,19 +329,19 @@ public class OneDriveNodeIntegrationTests
     }
 
     // -----------------------
-    // WarmAuth-Auto 车道
+    // OnlineWarmAuth 车道
     // -----------------------
 
     /// <summary>
-    /// WarmAuth：使用已持久化认证记录进行静默连接。
+    /// OnlineWarmAuth：使用已持久化认证记录进行静默连接。
     /// 不允许主动打开浏览器；若记录缺失则跳过。
     /// </summary>
     [SkippableFact(Timeout = 90000)]
-    [Trait("Category", "WarmAuth")]
+    [Trait("Category", "OnlineWarmAuth")]
     public async Task ConnectAsync_WithWarmAuthRecord_ShouldConnectSuccessfully()
     {
-        var clientId = GetWarmAuthClientIdOrSkip();
-        var options = CreateOnlineOptions(clientId, "InteractiveBrowser");
+        var lane = await GetOnlineWarmAuthLaneConfigurationOrSkipAsync();
+        var options = CreateOnlineOptions(lane.ClientId!, lane.TenantId, "InteractiveBrowser");
         var factory = new OneDriveGraphClientFactory(_factoryLogger);
 
         // WarmAuth 前置守卫：记录缺失/不可用时应快速给出 reauth-required 语义。
@@ -233,15 +359,15 @@ public class OneDriveNodeIntegrationTests
     }
 
     /// <summary>
-    /// WarmAuth：枚举文件/目录。
+    /// OnlineWarmAuth：枚举文件/目录。
     /// </summary>
     [SkippableFact(Timeout = 90000)]
-    [Trait("Category", "WarmAuth")]
+    [Trait("Category", "OnlineWarmAuth")]
     public async Task GetSyncItemsAsync_WithWarmAuth_ShouldEnumerateFilesAndFolders()
     {
-        var clientId = GetWarmAuthClientIdOrSkip();
+        var lane = await GetOnlineWarmAuthLaneConfigurationOrSkipAsync();
         var testFolder = GenerateTestFolderPath("WarmEnumTest");
-        var options = CreateOnlineOptions(clientId, "InteractiveBrowser", testFolder);
+        var options = CreateOnlineOptions(lane.ClientId!, lane.TenantId, "InteractiveBrowser", testFolder);
         var factory = new OneDriveGraphClientFactory(_factoryLogger);
 
         await factory.EnsureWarmAuthenticationReadyAsync(options, CancellationToken.None);
@@ -281,15 +407,15 @@ public class OneDriveNodeIntegrationTests
     }
 
     /// <summary>
-    /// WarmAuth：上传并下载文件。
+    /// OnlineWarmAuth：上传并下载文件。
     /// </summary>
     [SkippableFact(Timeout = 120000)]
-    [Trait("Category", "WarmAuth")]
+    [Trait("Category", "OnlineWarmAuth")]
     public async Task UploadAndDownloadAsync_WithWarmAuth_ShouldWorkCorrectly()
     {
-        var clientId = GetWarmAuthClientIdOrSkip();
+        var lane = await GetOnlineWarmAuthLaneConfigurationOrSkipAsync();
         var testFolder = GenerateTestFolderPath("WarmUploadDownloadTest");
-        var options = CreateOnlineOptions(clientId, "InteractiveBrowser", testFolder);
+        var options = CreateOnlineOptions(lane.ClientId!, lane.TenantId, "InteractiveBrowser", testFolder);
         var factory = new OneDriveGraphClientFactory(_factoryLogger);
 
         await factory.EnsureWarmAuthenticationReadyAsync(options, CancellationToken.None);
@@ -351,15 +477,15 @@ public class OneDriveNodeIntegrationTests
     }
 
     /// <summary>
-    /// WarmAuth：创建目录。
+    /// OnlineWarmAuth：创建目录。
     /// </summary>
     [SkippableFact(Timeout = 90000)]
-    [Trait("Category", "WarmAuth")]
+    [Trait("Category", "OnlineWarmAuth")]
     public async Task UploadDirectoryAsync_WithWarmAuth_ShouldCreateFolder()
     {
-        var clientId = GetWarmAuthClientIdOrSkip();
+        var lane = await GetOnlineWarmAuthLaneConfigurationOrSkipAsync();
         var testFolder = GenerateTestFolderPath("WarmFolderCreationTest");
-        var options = CreateOnlineOptions(clientId, "InteractiveBrowser", testFolder);
+        var options = CreateOnlineOptions(lane.ClientId!, lane.TenantId, "InteractiveBrowser", testFolder);
         var factory = new OneDriveGraphClientFactory(_factoryLogger);
 
         await factory.EnsureWarmAuthenticationReadyAsync(options, CancellationToken.None);
@@ -404,21 +530,20 @@ public class OneDriveNodeIntegrationTests
     }
 
     // -----------------------
-    // ColdAuth-Manual 车道
+    // OnlineColdAuth 车道
     // -----------------------
 
     /// <summary>
-    /// ColdAuth：InteractiveBrowser 手工授权连接。
-    /// 此测试永不在 CI 运行，只用于本地手工授权验证。
+    /// OnlineColdAuth：InteractiveBrowser 手工授权连接。
+    /// 默认关闭，需通过本地覆盖显式启用。
     /// </summary>
     [SkippableFact(Timeout = 120000)]
-    [Trait("Category", "ColdAuth")]
+    [Trait("Category", "OnlineColdAuth")]
     public async Task ConnectAsync_WithInteractiveBrowserManualAuth_ShouldConnectSuccessfully()
     {
-        var clientId = GetClientIdOrSkip("ColdAuth");
-        SkipIfInteractiveBrowserTestsNotExplicitlyEnabled();
+        var lane = GetOnlineColdAuthLaneConfigurationOrSkip(requiresInteractiveConsole: false);
 
-        var options = CreateOnlineOptions(clientId, "InteractiveBrowser");
+        var options = CreateOnlineOptions(lane.ClientId!, lane.TenantId, "InteractiveBrowser");
         var factory = new OneDriveGraphClientFactory(_factoryLogger);
         var graphClient = await factory.CreateClientAsync(options, CancellationToken.None);
         var node = new OneDriveNode("test-node-interactive", "Test OneDrive (Interactive)", options, graphClient, _logger);
@@ -432,20 +557,16 @@ public class OneDriveNodeIntegrationTests
     }
 
     /// <summary>
-    /// ColdAuth：DeviceCode 手工授权连接。
+    /// OnlineColdAuth：DeviceCode 手工授权连接。
     /// 修复命名语义：该测试真实使用 DeviceCode 模式。
     /// </summary>
     [SkippableFact(Timeout = 120000)]
-    [Trait("Category", "ColdAuth")]
+    [Trait("Category", "OnlineColdAuth")]
     public async Task ConnectAsync_WithDeviceCodeManualAuth_ShouldConnectSuccessfully()
     {
-        var clientId = GetClientIdOrSkip("ColdAuth");
-        SkipIfInteractiveBrowserTestsNotExplicitlyEnabled();
+        var lane = GetOnlineColdAuthLaneConfigurationOrSkip(requiresInteractiveConsole: true);
 
-        Skip.If(Console.IsInputRedirected || Console.IsOutputRedirected,
-            "DeviceCode 流需要交互式控制台，无法在重定向的 I/O 环境中运行。");
-
-        var options = CreateOnlineOptions(clientId, "DeviceCode");
+        var options = CreateOnlineOptions(lane.ClientId!, lane.TenantId, "DeviceCode");
         var factory = new OneDriveGraphClientFactory(_factoryLogger);
         var graphClient = await factory.CreateClientAsync(options, CancellationToken.None);
         var node = new OneDriveNode("test-node-devicecode", "Test OneDrive (DeviceCode)", options, graphClient, _logger);
@@ -459,18 +580,18 @@ public class OneDriveNodeIntegrationTests
     }
 
     // -----------------------
-    // ExpiredAuth-Negative 车道
+    // AuthNegative 车道
     // -----------------------
 
     /// <summary>
     /// 认证记录缺失时，应返回 reauth-required 受控失败语义，不应进入无限重试或挂起。
     /// </summary>
     [Fact(Timeout = 10000)]
-    [Trait("Category", "ExpiredAuth")]
+    [Trait("Category", "AuthNegative")]
     public async Task EnsureWarmAuthenticationReadyAsync_WhenAuthRecordMissing_ShouldFailFastWithReauthRequired()
     {
         var missingClientId = $"missing-client-{Guid.NewGuid():N}";
-        var options = CreateOnlineOptions(missingClientId, "InteractiveBrowser");
+        var options = CreateOnlineOptions(missingClientId, "common", "InteractiveBrowser");
         var factory = new OneDriveGraphClientFactory(_factoryLogger);
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
@@ -484,7 +605,7 @@ public class OneDriveNodeIntegrationTests
     /// 认证记录损坏（模拟过期/不可用状态）时，应返回 reauth-required 受控失败语义。
     /// </summary>
     [Fact(Timeout = 10000)]
-    [Trait("Category", "ExpiredAuth")]
+    [Trait("Category", "AuthNegative")]
     public async Task EnsureWarmAuthenticationReadyAsync_WhenAuthRecordCorrupted_ShouldFailFastWithReauthRequired()
     {
         var corruptedClientId = $"corrupted-client-{Guid.NewGuid():N}";
@@ -500,7 +621,7 @@ public class OneDriveNodeIntegrationTests
 
         try
         {
-            var options = CreateOnlineOptions(corruptedClientId, "InteractiveBrowser");
+            var options = CreateOnlineOptions(corruptedClientId, "common", "InteractiveBrowser");
             var factory = new OneDriveGraphClientFactory(_factoryLogger);
 
             var exception = await Assert.ThrowsAsync<InvalidOperationException>(
@@ -519,7 +640,7 @@ public class OneDriveNodeIntegrationTests
     /// Provider 层也应暴露 WarmAuth 前置守卫能力，便于 API/UI 先做快速预检。
     /// </summary>
     [Fact(Timeout = 10000)]
-    [Trait("Category", "ExpiredAuth")]
+    [Trait("Category", "AuthNegative")]
     public async Task EnsureWarmAuthenticationReadyAsync_FromProvider_WhenAuthRecordMissing_ShouldFailFast()
     {
         var missingClientId = $"provider-missing-client-{Guid.NewGuid():N}";

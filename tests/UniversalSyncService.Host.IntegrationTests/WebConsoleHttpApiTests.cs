@@ -1,57 +1,36 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using UniversalSyncService.Testing;
 using Xunit;
 
 namespace UniversalSyncService.Host.IntegrationTests;
 
 public sealed class WebConsoleHttpApiTests : IAsyncLifetime
 {
-    private string _contentRoot = string.Empty;
+    private TempContentRoot? _contentRoot;
 
     public Task InitializeAsync()
     {
-        _contentRoot = Path.Combine(Path.GetTempPath(), "UniversalSyncService-HttpTests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(_contentRoot);
-        CopyBuiltWebAssets(_contentRoot);
-        return Task.CompletedTask;
+        return InitializeCoreAsync();
     }
 
     public async Task DisposeAsync()
     {
-        if (Directory.Exists(_contentRoot))
+        if (_contentRoot is not null)
         {
-            for (var attempt = 0; attempt < 5; attempt++)
-            {
-                try
-                {
-                    Directory.Delete(_contentRoot, recursive: true);
-                    break;
-                }
-                catch (IOException) when (attempt < 4)
-                {
-                    await Task.Delay(200);
-                }
-                catch (UnauthorizedAccessException) when (attempt < 4)
-                {
-                    await Task.Delay(200);
-                }
-                catch
-                {
-                    break;
-                }
-            }
+            await _contentRoot.DisposeAsync();
         }
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
     public async Task Health_Should_ReturnHealthy_WithoutAuth()
     {
-        await File.WriteAllTextAsync(Path.Combine(_contentRoot, "appsettings.yaml"), CreateTestYaml(createSourceFile: false));
+        await WriteHostConfigAsync(createSourceFile: false);
 
-        await using var factory = new TestWebApplicationFactory(_contentRoot);
+        await using var factory = HostFactory.CreateHost(_contentRoot!.RootPath, enableWebRoot: true);
         var client = factory.CreateClient();
 
         var response = await client.GetFromJsonAsync<HealthResponse>("/health");
@@ -60,11 +39,13 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
+    [Trait("Category", "AuthNegative")]
     public async Task PlansApi_Should_RequireApiKey()
     {
-        await File.WriteAllTextAsync(Path.Combine(_contentRoot, "appsettings.yaml"), CreateTestYaml(createSourceFile: false, requireApiKey: true));
+        await WriteHostConfigAsync(createSourceFile: false, requireApiKey: true);
 
-        await using var factory = new TestWebApplicationFactory(_contentRoot);
+        await using var factory = HostFactory.CreateHost(_contentRoot!.RootPath, enableWebRoot: true);
         var client = factory.CreateClient();
 
         var response = await client.GetAsync("/api/v1/plans");
@@ -72,11 +53,12 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
     public async Task PlansApi_Should_ReturnConfiguredPlan_WithApiKey()
     {
-        await File.WriteAllTextAsync(Path.Combine(_contentRoot, "appsettings.yaml"), CreateTestYaml(createSourceFile: false));
+        await WriteHostConfigAsync(createSourceFile: false);
 
-        await using var factory = new TestWebApplicationFactory(_contentRoot);
+        await using var factory = HostFactory.CreateHost(_contentRoot!.RootPath, enableWebRoot: true);
         var client = CreateAuthorizedClient(factory);
 
         var response = await client.GetFromJsonAsync<List<PlanSummaryResponse>>("/api/v1/plans");
@@ -86,11 +68,12 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
     public async Task PlansApi_Should_CreatePlan_WithApiKey()
     {
-        await File.WriteAllTextAsync(Path.Combine(_contentRoot, "appsettings.yaml"), CreateTestYaml(createSourceFile: false));
+        await WriteHostConfigAsync(createSourceFile: false);
 
-        await using var factory = new TestWebApplicationFactory(_contentRoot);
+        await using var factory = HostFactory.CreateHost(_contentRoot!.RootPath, enableWebRoot: true);
         var client = CreateAuthorizedClient(factory);
 
         var request = new CreateOrUpdatePlanRequest(
@@ -131,11 +114,12 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
     public async Task PlansApi_Should_UpdatePlan_WithApiKey()
     {
-        await File.WriteAllTextAsync(Path.Combine(_contentRoot, "appsettings.yaml"), CreateTestYaml(createSourceFile: false));
+        await WriteHostConfigAsync(createSourceFile: false);
 
-        await using var factory = new TestWebApplicationFactory(_contentRoot);
+        await using var factory = HostFactory.CreateHost(_contentRoot!.RootPath, enableWebRoot: true);
         var client = CreateAuthorizedClient(factory);
 
         var request = new CreateOrUpdatePlanRequest(
@@ -176,11 +160,12 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
     public async Task PlansApi_Should_DeletePlan_WithApiKey()
     {
-        await File.WriteAllTextAsync(Path.Combine(_contentRoot, "appsettings.yaml"), CreateTestYaml(createSourceFile: false));
+        await WriteHostConfigAsync(createSourceFile: false);
 
-        await using var factory = new TestWebApplicationFactory(_contentRoot);
+        await using var factory = HostFactory.CreateHost(_contentRoot!.RootPath, enableWebRoot: true);
         var client = CreateAuthorizedClient(factory);
 
         var request = new CreateOrUpdatePlanRequest(
@@ -219,11 +204,12 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
     public async Task ExecuteNowApi_Should_CopyFile_WithApiKey()
     {
-        await File.WriteAllTextAsync(Path.Combine(_contentRoot, "appsettings.yaml"), CreateTestYaml(createSourceFile: true));
+        await WriteHostConfigAsync(createSourceFile: true);
 
-        await using var factory = new TestWebApplicationFactory(_contentRoot);
+        await using var factory = HostFactory.CreateHost(_contentRoot!.RootPath, enableWebRoot: true);
         var client = CreateAuthorizedClient(factory);
 
         var response = await client.PostAsync("/api/v1/plans/local-filesystem-test/execute-now", content: null);
@@ -233,17 +219,18 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
         Assert.NotNull(payload);
         Assert.True(payload.TotalTasks >= 1);
 
-        var copiedFilePath = Path.Combine(_contentRoot, "slave", "web.txt");
+        var copiedFilePath = Path.Combine(_contentRoot!.RootPath, "slave", "web.txt");
         Assert.True(File.Exists(copiedFilePath));
         Assert.Equal("from-http", await File.ReadAllTextAsync(copiedFilePath));
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
     public async Task GlobalHistoryApi_Should_ReturnEntries_AfterExecution()
     {
-        await File.WriteAllTextAsync(Path.Combine(_contentRoot, "appsettings.yaml"), CreateTestYaml(createSourceFile: true));
+        await WriteHostConfigAsync(createSourceFile: true);
 
-        await using var factory = new TestWebApplicationFactory(_contentRoot);
+        await using var factory = HostFactory.CreateHost(_contentRoot!.RootPath, enableWebRoot: true);
         var client = CreateAuthorizedClient(factory);
 
         await client.PostAsync("/api/v1/plans/local-filesystem-test/execute-now", content: null);
@@ -254,11 +241,12 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
     public async Task ConfigSummaryApi_Should_ReturnCurrentPaths_AndCounts()
     {
-        await File.WriteAllTextAsync(Path.Combine(_contentRoot, "appsettings.yaml"), CreateTestYaml(createSourceFile: false));
+        await WriteHostConfigAsync(createSourceFile: false);
 
-        await using var factory = new TestWebApplicationFactory(_contentRoot);
+        await using var factory = HostFactory.CreateHost(_contentRoot!.RootPath, enableWebRoot: true);
         var client = CreateAuthorizedClient(factory);
 
         var response = await client.GetFromJsonAsync<ConfigSummaryResponse>("/api/v1/config/summary");
@@ -269,11 +257,12 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
     public async Task NodesApi_Should_ExposeImplicitHostNode_AndSupportCrud()
     {
-        await File.WriteAllTextAsync(Path.Combine(_contentRoot, "appsettings.yaml"), CreateTestYaml(createSourceFile: false));
+        await WriteHostConfigAsync(createSourceFile: false);
 
-        await using var factory = new TestWebApplicationFactory(_contentRoot);
+        await using var factory = HostFactory.CreateHost(_contentRoot!.RootPath, enableWebRoot: true);
         var client = CreateAuthorizedClient(factory);
 
         var initialNodes = await client.GetFromJsonAsync<List<NodeSummaryResponse>>("/api/v1/nodes");
@@ -288,7 +277,7 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
             IsEnabled: true,
             ConnectionSettings: new Dictionary<string, string>
             {
-                ["RootPath"] = Path.Combine(_contentRoot, "archive").Replace("\\", "/")
+                ["RootPath"] = Path.Combine(_contentRoot!.RootPath, "archive").Replace("\\", "/")
             },
             CustomOptions: new Dictionary<string, string>
             {
@@ -312,7 +301,7 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
             IsEnabled: false,
             ConnectionSettings: new Dictionary<string, string>
             {
-                ["RootPath"] = Path.Combine(_contentRoot, "archive-updated").Replace("\\", "/")
+                ["RootPath"] = Path.Combine(_contentRoot!.RootPath, "archive-updated").Replace("\\", "/")
             },
             CustomOptions: new Dictionary<string, string>
             {
@@ -337,11 +326,12 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Offline")]
     public async Task NodesApi_Should_RejectMismatchedOrImplicitNodeIdOnUpdate()
     {
-        await File.WriteAllTextAsync(Path.Combine(_contentRoot, "appsettings.yaml"), CreateTestYaml(createSourceFile: false));
+        await WriteHostConfigAsync(createSourceFile: false);
 
-        await using var factory = new TestWebApplicationFactory(_contentRoot);
+        await using var factory = HostFactory.CreateHost(_contentRoot!.RootPath, enableWebRoot: true);
         var client = CreateAuthorizedClient(factory);
 
         var mismatchedRequest = new CreateOrUpdateNodeRequest(
@@ -351,7 +341,7 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
             IsEnabled: true,
             ConnectionSettings: new Dictionary<string, string>
             {
-                ["RootPath"] = Path.Combine(_contentRoot, "other").Replace("\\", "/")
+                ["RootPath"] = Path.Combine(_contentRoot!.RootPath, "other").Replace("\\", "/")
             },
             CustomOptions: new Dictionary<string, string>());
 
@@ -365,7 +355,7 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
             IsEnabled: true,
             ConnectionSettings: new Dictionary<string, string>
             {
-                ["RootPath"] = Path.Combine(_contentRoot, "host").Replace("\\", "/")
+                ["RootPath"] = Path.Combine(_contentRoot!.RootPath, "host").Replace("\\", "/")
             },
             CustomOptions: new Dictionary<string, string>());
 
@@ -380,10 +370,10 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
         return client;
     }
 
-    private string CreateTestYaml(bool createSourceFile, bool requireApiKey = false)
+    private async Task WriteHostConfigAsync(bool createSourceFile, bool requireApiKey = false)
     {
-        var masterRoot = Path.Combine(_contentRoot, "master");
-        var slaveRoot = Path.Combine(_contentRoot, "slave");
+        var masterRoot = Path.Combine(_contentRoot!.RootPath, "master");
+        var slaveRoot = Path.Combine(_contentRoot!.RootPath, "slave");
         Directory.CreateDirectory(masterRoot);
         Directory.CreateDirectory(slaveRoot);
 
@@ -392,132 +382,21 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
             File.WriteAllText(Path.Combine(masterRoot, "web.txt"), "from-http");
         }
 
-        return $@"UniversalSyncService:
-  Service:
-    ServiceName: ""HttpWebConsoleTest""
-    HeartbeatIntervalSeconds: 60
-  Interface:
-    EnableGrpc: true
-    EnableHttpApi: true
-    EnableWebConsole: true
-    RequireManagementApiKey: {requireApiKey.ToString().ToLowerInvariant()}
-    AllowAnonymousLoopback: true
-    ManagementApiKey: ""test-key""
-  Logging:
-    MinimumLevel: ""Information""
-    EnableConsoleSink: false
-    EnableFileSink: false
-    Overrides: {{}}
-    File:
-      Path: ""logs/test-.log""
-      RollingInterval: ""Day""
-      RetainedFileCountLimit: 2
-      FileSizeLimitBytes: 1048576
-      RollOnFileSizeLimit: true
-      OutputTemplate: ""{{Message:lj}}{{NewLine}}{{Exception}}""
-  Plugins:
-    EnablePluginSystem: false
-    PluginDirectory: ""plugins""
-    Descriptors: []
-  Sync:
-    EnableSyncFramework: true
-    SchedulerPollingIntervalSeconds: 60
-    MaxConcurrentTasks: 1
-    HistoryRetentionVersions: 20
-    HistoryStorePath: ""data/sync-history.db""
-    HostWorkspacePath: ""master""
-    Nodes:
-      - Id: ""local-master""
-        Name: ""本地主节点""
-        NodeType: ""Local""
-        ConnectionSettings:
-          RootPath: ""{masterRoot.Replace("\\", "/")}""
-        CustomOptions: {{}}
-        CreatedAt: ""2026-04-09T00:00:00+08:00""
-        ModifiedAt: ""2026-04-09T00:00:00+08:00""
-        IsEnabled: true
-      - Id: ""local-slave""
-        Name: ""本地从节点""
-        NodeType: ""Local""
-        ConnectionSettings:
-          RootPath: ""{slaveRoot.Replace("\\", "/")}""
-        CustomOptions: {{}}
-        CreatedAt: ""2026-04-09T00:00:00+08:00""
-        ModifiedAt: ""2026-04-09T00:00:00+08:00""
-        IsEnabled: true
-    Plans:
-      - Id: ""local-filesystem-test""
-        Name: ""本地文件系统测试计划""
-        Description: ""供 HTTP API 与 Web Console 集成测试使用。""
-        MasterNodeId: ""local-master""
-        SyncItemType: ""FileSystem""
-        SlaveConfigurations:
-          - SlaveNodeId: ""local-slave""
-            SyncMode: ""Bidirectional""
-            SourcePath: "".""
-            TargetPath: "".""
-            EnableDeletionProtection: true
-            Filters: []
-            Exclusions: []
-        Schedule:
-          TriggerType: ""Manual""
-          EnableFileSystemWatcher: false
-        IsEnabled: true
-        CreatedAt: ""2026-04-09T00:00:00+08:00""
-        ModifiedAt: ""2026-04-09T00:00:00+08:00""
-        ExecutionCount: 0
-";
-    }
-
-    private sealed class TestWebApplicationFactory : WebApplicationFactory<Program>
-    {
-        private readonly string _contentRoot;
-
-        public TestWebApplicationFactory(string contentRoot)
-        {
-            _contentRoot = contentRoot;
-        }
-
-        protected override void ConfigureWebHost(IWebHostBuilder builder)
-        {
-            builder.UseEnvironment("Production");
-            builder.UseContentRoot(_contentRoot);
-            builder.UseWebRoot(Path.Combine(_contentRoot, "wwwroot"));
-        }
-    }
-
-    private static void CopyBuiltWebAssets(string targetContentRoot)
-    {
-        var sourceWwwroot = Path.Combine(Directory.GetCurrentDirectory(), "UniversalSyncService.Host", "wwwroot");
-        var targetWwwroot = Path.Combine(targetContentRoot, "wwwroot");
-
-        if (!Directory.Exists(sourceWwwroot))
-        {
-            return;
-        }
-
-        Directory.CreateDirectory(targetWwwroot);
-        CopyDirectory(sourceWwwroot, targetWwwroot);
-    }
-
-    private static void CopyDirectory(string sourceDirectory, string targetDirectory)
-    {
-        foreach (var directory in Directory.GetDirectories(sourceDirectory, "*", SearchOption.AllDirectories))
-        {
-            Directory.CreateDirectory(directory.Replace(sourceDirectory, targetDirectory));
-        }
-
-        foreach (var file in Directory.GetFiles(sourceDirectory, "*", SearchOption.AllDirectories))
-        {
-            var targetFilePath = file.Replace(sourceDirectory, targetDirectory);
-            var targetDirectoryPath = Path.GetDirectoryName(targetFilePath);
-            if (!string.IsNullOrWhiteSpace(targetDirectoryPath))
+        await ConfigLoader.WriteYamlAsync(
+            outputDirectory: _contentRoot!.RootPath,
+            templatePath: TestConfigPaths.GetTemplatePath("host.test.yaml"),
+            localOverridePath: TestConfigPaths.GetLocalOverridePath("host.test.yaml"),
+            placeholders: new Dictionary<string, string>
             {
-                Directory.CreateDirectory(targetDirectoryPath);
-            }
+                ["MASTER_ROOT"] = masterRoot.Replace("\\", "/"),
+                ["SLAVE_ROOT"] = slaveRoot.Replace("\\", "/"),
+                ["REQUIRE_API_KEY"] = requireApiKey.ToString().ToLowerInvariant()
+            });
+    }
 
-            File.Copy(file, targetFilePath, overwrite: true);
-        }
+    private async Task InitializeCoreAsync()
+    {
+        _contentRoot = await TempContentRoot.CreateAsync("UniversalSyncService-HttpTests", copyBuiltWebAssets: true);
     }
 
     private sealed record HealthResponse(string Status);

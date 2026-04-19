@@ -1,0 +1,12 @@
+UniversalSyncService:
+  OneDriveTest:
+    # 应用程序凭据 (ClientId) 将通过本地 Local/ 覆盖或持续集成环境注入。
+    # 模板中仅包含非敏感配置。
+    AppCredentials:
+      ClientId: "PLACEHOLDER_CLIENT_ID"
+      TenantId: "common"
+    TestAccount:
+      UserEmail: "test-user@example.com"
+    SyncPaths:
+      RemoteRoot: "/TestRoot"
+      LocalMirror: "test-temp/onedrive-mirror"

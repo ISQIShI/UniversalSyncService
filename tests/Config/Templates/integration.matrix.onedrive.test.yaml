@@ -1,0 +1,76 @@
+UniversalSyncService:
+  Service:
+    ServiceName: "IntegrationTestHost"
+    HeartbeatIntervalSeconds: 60
+  Interface:
+    EnableGrpc: true
+    EnableHttpApi: true
+    EnableWebConsole: true
+    ManagementApiKey: "test-key"
+  Logging:
+    MinimumLevel: "Information"
+    EnableConsoleSink: false
+    EnableFileSink: false
+    Overrides: {}
+    File:
+      Path: "logs/test-.log"
+      RollingInterval: "Day"
+      RetainedFileCountLimit: 2
+      FileSizeLimitBytes: 1048576
+      RollOnFileSizeLimit: true
+      OutputTemplate: "{Message:lj}{NewLine}{Exception}"
+  Plugins:
+    EnablePluginSystem: false
+    PluginDirectory: "plugins"
+    Descriptors: []
+  Sync:
+    EnableSyncFramework: true
+    SchedulerPollingIntervalSeconds: 60
+    MaxConcurrentTasks: 1
+    HistoryRetentionVersions: 20
+    HistoryStorePath: "data/sync-history.db"
+    Nodes:
+      - Id: "local-master"
+        Name: "本地主节点"
+        NodeType: "Local"
+        ConnectionSettings:
+          RootPath: "{{MASTER_ROOT}}"
+        CustomOptions: {}
+        CreatedAt: "2026-04-09T00:00:00+08:00"
+        ModifiedAt: "2026-04-09T00:00:00+08:00"
+        IsEnabled: true
+      - Id: "one-drive-slave"
+        Name: "OneDrive 从节点"
+        NodeType: "OneDrive"
+        ConnectionSettings:
+          ClientId: "{{ONEDRIVE_CLIENT_ID}}"
+          TenantId: "{{ONEDRIVE_TENANT_ID}}"
+          AuthMode: "InteractiveBrowser"
+          RootPath: "{{ONEDRIVE_ROOT}}"
+          Scopes: "Files.ReadWrite offline_access User.Read"
+        CustomOptions: {}
+        CreatedAt: "2026-04-09T00:00:00+08:00"
+        ModifiedAt: "2026-04-09T00:00:00+08:00"
+        IsEnabled: true
+    Plans:
+      - Id: "node-matrix-local-onedrive"
+        Name: "节点矩阵 Local↔OneDrive 计划"
+        Description: "用于验证 Local↔OneDrive 进入主同步链（sync-plan/harness）。"
+        MasterNodeId: "local-master"
+        SyncItemType: "FileSystem"
+        SlaveConfigurations:
+          - SlaveNodeId: "one-drive-slave"
+            SyncMode: "{{SYNC_MODE}}"
+            SourcePath: "{{SOURCE_PATH}}"
+            TargetPath: "{{TARGET_PATH}}"
+            EnableDeletionProtection: true
+            ConflictResolutionStrategy: "{{CONFLICT_RESOLUTION_STRATEGY}}"
+            Filters: []
+            Exclusions: []
+        Schedule:
+          TriggerType: "Manual"
+          EnableFileSystemWatcher: false
+        IsEnabled: false
+        CreatedAt: "2026-04-09T00:00:00+08:00"
+        ModifiedAt: "2026-04-09T00:00:00+08:00"
+        ExecutionCount: 0

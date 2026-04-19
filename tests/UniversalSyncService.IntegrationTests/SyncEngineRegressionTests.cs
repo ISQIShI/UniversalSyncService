@@ -14,10 +14,12 @@ using UniversalSyncService.Core.Providers;
 using UniversalSyncService.Core.SyncManagement.Engine;
 using UniversalSyncService.Core.SyncManagement.History;
 using UniversalSyncService.Core.SyncManagement.Tasks;
+using UniversalSyncService.Testing;
 using Xunit;
 
 namespace UniversalSyncService.IntegrationTests;
 
+[Trait("Category", "Offline")]
 public sealed class SyncEngineRegressionTests
 {
     [Fact]
@@ -342,76 +344,55 @@ public sealed class SyncEngineRegressionTests
     public async Task SyncHistoryManager_ShouldTrimHistoryToConfiguredRetentionVersions()
     {
         // Arrange
-        var root = CreateTempDirectory();
-        try
-        {
-            var manager = CreateSqliteHistoryManager(root, keepVersions: 2);
-            await manager.SaveHistoryAsync([CreateHistoryEntryWithVersion("plan-trim", "node-a", "a.txt", version: 1)]);
-            await manager.SaveHistoryAsync([CreateHistoryEntryWithVersion("plan-trim", "node-a", "a.txt", version: 2)]);
-            await manager.SaveHistoryAsync([CreateHistoryEntryWithVersion("plan-trim", "node-a", "a.txt", version: 3)]);
+        await using var tempRoot = await TempContentRoot.CreateAsync("UniversalSyncService-Regression");
+        var manager = CreateSqliteHistoryManager(tempRoot.RootPath, keepVersions: 2);
+        await manager.SaveHistoryAsync([CreateHistoryEntryWithVersion("plan-trim", "node-a", "a.txt", version: 1)]);
+        await manager.SaveHistoryAsync([CreateHistoryEntryWithVersion("plan-trim", "node-a", "a.txt", version: 2)]);
+        await manager.SaveHistoryAsync([CreateHistoryEntryWithVersion("plan-trim", "node-a", "a.txt", version: 3)]);
 
-            // Act
-            var history = await manager.GetPreviousSyncHistoryAsync("plan-trim", "node-a");
-            var versions = history.Select(entry => entry.SyncVersion).Distinct().ToArray();
+        // Act
+        var history = await manager.GetPreviousSyncHistoryAsync("plan-trim", "node-a");
+        var versions = history.Select(entry => entry.SyncVersion).Distinct().ToArray();
 
-            // Assert
-            Assert.Equal([3L, 2L], versions);
-        }
-        finally
-        {
-            await DeleteDirectoryWithRetryAsync(root);
-        }
+        // Assert
+        Assert.Equal([3L, 2L], versions);
     }
 
     [Fact]
     public async Task SyncHistoryManager_CleanupOldHistory_ShouldKeepLatestRequestedVersions()
     {
         // Arrange
-        var root = CreateTempDirectory();
-        try
-        {
-            var manager = CreateSqliteHistoryManager(root, keepVersions: 10);
-            await manager.SaveHistoryAsync([CreateHistoryEntryWithVersion("plan-cleanup", "node-a", "a.txt", version: 1)]);
-            await manager.SaveHistoryAsync([CreateHistoryEntryWithVersion("plan-cleanup", "node-a", "a.txt", version: 2)]);
-            await manager.SaveHistoryAsync([CreateHistoryEntryWithVersion("plan-cleanup", "node-a", "a.txt", version: 3)]);
-            await manager.SaveHistoryAsync([CreateHistoryEntryWithVersion("plan-cleanup", "node-a", "a.txt", version: 4)]);
+        await using var tempRoot = await TempContentRoot.CreateAsync("UniversalSyncService-Regression");
+        var manager = CreateSqliteHistoryManager(tempRoot.RootPath, keepVersions: 10);
+        await manager.SaveHistoryAsync([CreateHistoryEntryWithVersion("plan-cleanup", "node-a", "a.txt", version: 1)]);
+        await manager.SaveHistoryAsync([CreateHistoryEntryWithVersion("plan-cleanup", "node-a", "a.txt", version: 2)]);
+        await manager.SaveHistoryAsync([CreateHistoryEntryWithVersion("plan-cleanup", "node-a", "a.txt", version: 3)]);
+        await manager.SaveHistoryAsync([CreateHistoryEntryWithVersion("plan-cleanup", "node-a", "a.txt", version: 4)]);
 
-            // Act
-            await manager.CleanupOldHistoryAsync("plan-cleanup", keepVersions: 2);
-            var history = await manager.GetPreviousSyncHistoryAsync("plan-cleanup", "node-a");
-            var versions = history.Select(entry => entry.SyncVersion).Distinct().ToArray();
+        // Act
+        await manager.CleanupOldHistoryAsync("plan-cleanup", keepVersions: 2);
+        var history = await manager.GetPreviousSyncHistoryAsync("plan-cleanup", "node-a");
+        var versions = history.Select(entry => entry.SyncVersion).Distinct().ToArray();
 
-            // Assert
-            Assert.Equal([4L, 3L], versions);
-        }
-        finally
-        {
-            await DeleteDirectoryWithRetryAsync(root);
-        }
+        // Assert
+        Assert.Equal([4L, 3L], versions);
     }
 
     [Fact]
     public async Task SyncHistoryManager_DeletePlanHistory_ShouldDeleteOnlyTargetPlan()
     {
         // Arrange
-        var root = CreateTempDirectory();
-        try
-        {
-            var manager = CreateSqliteHistoryManager(root, keepVersions: 10);
-            await manager.SaveHistoryAsync([CreateHistoryEntryWithVersion("plan-a", "node-a", "a.txt", version: 1)]);
-            await manager.SaveHistoryAsync([CreateHistoryEntryWithVersion("plan-b", "node-a", "b.txt", version: 1)]);
+        await using var tempRoot = await TempContentRoot.CreateAsync("UniversalSyncService-Regression");
+        var manager = CreateSqliteHistoryManager(tempRoot.RootPath, keepVersions: 10);
+        await manager.SaveHistoryAsync([CreateHistoryEntryWithVersion("plan-a", "node-a", "a.txt", version: 1)]);
+        await manager.SaveHistoryAsync([CreateHistoryEntryWithVersion("plan-b", "node-a", "b.txt", version: 1)]);
 
-            // Act
-            await manager.DeletePlanHistoryAsync("plan-a");
+        // Act
+        await manager.DeletePlanHistoryAsync("plan-a");
 
-            // Assert
-            Assert.Empty(await manager.GetPreviousSyncHistoryAsync("plan-a", "node-a"));
-            Assert.NotEmpty(await manager.GetPreviousSyncHistoryAsync("plan-b", "node-a"));
-        }
-        finally
-        {
-            await DeleteDirectoryWithRetryAsync(root);
-        }
+        // Assert
+        Assert.Empty(await manager.GetPreviousSyncHistoryAsync("plan-a", "node-a"));
+        Assert.NotEmpty(await manager.GetPreviousSyncHistoryAsync("plan-b", "node-a"));
     }
 
     [Fact]
@@ -536,39 +517,6 @@ public sealed class SyncEngineRegressionTests
         throw new TimeoutException("在预期时间内未满足断言条件。");
     }
 
-    private static async Task DeleteDirectoryWithRetryAsync(string path)
-    {
-        if (!Directory.Exists(path))
-        {
-            return;
-        }
-
-        for (var attempt = 0; attempt < 5; attempt++)
-        {
-            try
-            {
-                Directory.Delete(path, recursive: true);
-                return;
-            }
-            catch (IOException) when (attempt < 4)
-            {
-                await Task.Delay(200);
-            }
-            catch (UnauthorizedAccessException) when (attempt < 4)
-            {
-                await Task.Delay(200);
-            }
-            catch (IOException)
-            {
-                return;
-            }
-            catch (UnauthorizedAccessException)
-            {
-                return;
-            }
-        }
-    }
-
     private static NodeConfiguration CreateNodeConfiguration(string id, string nodeType)
     {
         return new NodeConfiguration(id, id, nodeType, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
@@ -588,13 +536,6 @@ public sealed class SyncEngineRegressionTests
     {
         var metadata = CreateMetadata(path, version, DateTimeOffset.UtcNow.AddMinutes(version), $"checksum-{version}");
         return new SyncHistoryEntry(Guid.NewGuid().ToString("N"), planId, $"task-{version}", nodeId, metadata, FileHistoryState.Exists, DateTimeOffset.UtcNow, version);
-    }
-
-    private static string CreateTempDirectory()
-    {
-        var root = Path.Combine(Path.GetTempPath(), "UniversalSyncService-Regression", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        return root;
     }
 
     private static SyncHistoryManager CreateSqliteHistoryManager(string contentRoot, int keepVersions)

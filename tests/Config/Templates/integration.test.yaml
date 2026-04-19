@@ -1,0 +1,72 @@
+UniversalSyncService:
+  Service:
+    ServiceName: "IntegrationTestHost"
+    HeartbeatIntervalSeconds: 60
+  Interface:
+    EnableGrpc: true
+    EnableHttpApi: true
+    EnableWebConsole: true
+    ManagementApiKey: "test-key"
+  Logging:
+    MinimumLevel: "Information"
+    EnableConsoleSink: false
+    EnableFileSink: false
+    Overrides: {}
+    File:
+      Path: "logs/test-.log"
+      RollingInterval: "Day"
+      RetainedFileCountLimit: 2
+      FileSizeLimitBytes: 1048576
+      RollOnFileSizeLimit: true
+      OutputTemplate: "{Message:lj}{NewLine}{Exception}"
+  Plugins:
+    EnablePluginSystem: false
+    PluginDirectory: "plugins"
+    Descriptors: []
+  Sync:
+    EnableSyncFramework: true
+    SchedulerPollingIntervalSeconds: 60
+    MaxConcurrentTasks: 1
+    HistoryRetentionVersions: 20
+    HistoryStorePath: "data/sync-history.db"
+    Nodes:
+      - Id: "local-master"
+        Name: "本地主节点"
+        NodeType: "Local"
+        ConnectionSettings:
+          RootPath: "{{MASTER_ROOT}}"
+        CustomOptions: {}
+        CreatedAt: "2026-04-09T00:00:00+08:00"
+        ModifiedAt: "2026-04-09T00:00:00+08:00"
+        IsEnabled: true
+      - Id: "local-slave"
+        Name: "本地从节点"
+        NodeType: "Local"
+        ConnectionSettings:
+          RootPath: "{{SLAVE_ROOT}}"
+        CustomOptions: {}
+        CreatedAt: "2026-04-09T00:00:00+08:00"
+        ModifiedAt: "2026-04-09T00:00:00+08:00"
+        IsEnabled: true
+    Plans:
+      - Id: "local-filesystem-test"
+        Name: "本地文件系统测试计划"
+        Description: "用于本地节点与普通文件系统同步对象的功能测试。"
+        MasterNodeId: "local-master"
+        SyncItemType: "FileSystem"
+        SlaveConfigurations:
+          - SlaveNodeId: "local-slave"
+            SyncMode: "{{SYNC_MODE}}"
+            SourcePath: "{{SOURCE_PATH}}"
+            TargetPath: "{{TARGET_PATH}}"
+            EnableDeletionProtection: true
+            ConflictResolutionStrategy: "{{CONFLICT_RESOLUTION_STRATEGY}}"
+            Filters: []
+            Exclusions: []
+        Schedule:
+          TriggerType: "Manual"
+          EnableFileSystemWatcher: false
+        IsEnabled: false
+        CreatedAt: "2026-04-09T00:00:00+08:00"
+        ModifiedAt: "2026-04-09T00:00:00+08:00"
+        ExecutionCount: 0
