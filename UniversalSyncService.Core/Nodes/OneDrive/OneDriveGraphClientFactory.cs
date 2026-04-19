@@ -47,6 +47,38 @@ public sealed class OneDriveGraphClientFactory
         _ = await CreateInteractiveBrowserCredentialAsync(options, ensureAuthenticated: true, cancellationToken);
     }
 
+    /// <summary>
+    /// WarmAuth 预检查：只允许使用已持久化认证记录。
+    /// 若认证记录缺失或损坏，返回带 reauth-required 语义的受控失败。
+    /// </summary>
+    public async Task EnsureWarmAuthenticationReadyAsync(OneDriveNodeOptions options, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        if (!string.Equals(options.AuthMode, "InteractiveBrowser", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (string.IsNullOrWhiteSpace(options.ClientId))
+        {
+            throw CreateReauthRequiredException("缺少 ClientId，无法定位 OneDrive 认证记录。", options.ClientId);
+        }
+
+        if (!OneDriveAuthenticationRecordStore.Exists(options.ClientId))
+        {
+            throw CreateReauthRequiredException("未找到持久化 OneDrive 认证记录。", options.ClientId);
+        }
+
+        var authenticationRecord = await OneDriveAuthenticationRecordStore.LoadAsync(options.ClientId, cancellationToken);
+        if (authenticationRecord is null)
+        {
+            throw CreateReauthRequiredException("OneDrive 认证记录已损坏或不可读取。", options.ClientId);
+        }
+    }
+
     private DeviceCodeCredential CreateDeviceCodeCredential(OneDriveNodeOptions options)
     {
         // 对于仅 Microsoft 个人账户的应用，需要将 tenant 从 "common" 改为 "consumers"
@@ -159,5 +191,12 @@ public sealed class OneDriveGraphClientFactory
         return scopes.Length > 0
             ? scopes
             : ["Files.ReadWrite", "offline_access", "User.Read"];
+    }
+
+    private static InvalidOperationException CreateReauthRequiredException(string reason, string? clientId)
+    {
+        var recordPath = OneDriveAuthenticationRecordStore.GetRecordPath(clientId ?? string.Empty);
+        return new InvalidOperationException(
+            $"OneDrive WarmAuth 前置检查失败（reauth-required）：{reason} 请重新执行 ColdAuth 交互授权生成认证记录。AuthRecordPath={recordPath}");
     }
 }

@@ -100,6 +100,18 @@ public sealed class OneDriveNodeProvider : INodeProvider
         return _clientFactory.EnsureAuthenticationAsync(options, cancellationToken);
     }
 
+    /// <summary>
+    /// WarmAuth 前置检查：要求存在可用的持久化认证记录。
+    /// </summary>
+    public Task EnsureWarmAuthenticationReadyAsync(NodeConfiguration configuration, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        var normalizedConfiguration = NormalizeConfiguration(configuration);
+        var options = CreateOptionsWithDefaults(normalizedConfiguration.ConnectionSettings);
+        return _clientFactory.EnsureWarmAuthenticationReadyAsync(options, cancellationToken);
+    }
+
     public bool SupportsAbsoluteScopedPath(NodeConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);

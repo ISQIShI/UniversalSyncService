@@ -42,7 +42,32 @@ public static class OneDriveAuthenticationRecordStore
         await authenticationRecord.SerializeAsync(stream, cancellationToken);
     }
 
-    private static string GetRecordPath(string clientId)
+    /// <summary>
+    /// 检查指定客户端是否存在持久化认证记录。
+    /// </summary>
+    public static bool Exists(string clientId)
+    {
+        var recordPath = GetRecordPath(clientId);
+        return File.Exists(recordPath);
+    }
+
+    /// <summary>
+    /// 删除指定客户端的认证记录（若存在）。
+    /// </summary>
+    public static Task DeleteIfExistsAsync(string clientId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var recordPath = GetRecordPath(clientId);
+        if (File.Exists(recordPath))
+        {
+            File.Delete(recordPath);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public static string GetRecordPath(string clientId)
     {
         var normalizedClientId = string.IsNullOrWhiteSpace(clientId)
             ? "unknown-client"
