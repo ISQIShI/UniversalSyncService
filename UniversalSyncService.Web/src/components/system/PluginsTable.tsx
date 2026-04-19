@@ -1,4 +1,5 @@
 import type { PluginSummary } from '../../api.ts';
+import { SystemPresentationHelpers } from './systemPresentation.ts';
 
 type PluginsTableProps = {
   plugins: PluginSummary[];
@@ -6,17 +7,17 @@ type PluginsTableProps = {
 
 export function PluginsTable({ plugins }: PluginsTableProps) {
   if (plugins.length === 0) {
-    return <div className="empty-state">当前运行时未加载任何插件。</div>;
+    return <div className="empty-state">{SystemPresentationHelpers.getEmptyPluginsMessage()}</div>;
   }
 
   return (
     <table className="console-table">
       <thead>
         <tr>
-          <th>插件 ID</th>
-          <th>插件名称</th>
-          <th>版本</th>
-          <th>说明</th>
+          <th>{SystemPresentationHelpers.getPluginIdHeader()}</th>
+          <th>{SystemPresentationHelpers.getPluginNameHeader()}</th>
+          <th>{SystemPresentationHelpers.getPluginVersionHeader()}</th>
+          <th>{SystemPresentationHelpers.getPluginDescriptionHeader()}</th>
         </tr>
       </thead>
       <tbody>

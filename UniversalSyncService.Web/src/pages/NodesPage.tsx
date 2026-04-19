@@ -5,11 +5,13 @@ import { Panel } from '../components/common/Panel.tsx';
 import { NodeDetailView } from '../components/nodes/NodeDetail.tsx';
 import { NodeForm, toNodeRequestPayload } from '../components/nodes/NodeForm.tsx';
 import { NodeList } from '../components/nodes/NodeList.tsx';
-import { createDefaultNodeForm, mapNodeDetailToForm, type NodeFormState } from '../components/nodes/nodePresentation.ts';
+import { createDefaultNodeForm, mapNodeDetailToForm, NodePresentationHelpers, parseKeyValueText, getCaseInsensitiveSetting, upsertCaseInsensitiveSetting, type NodeFormState } from '../components/nodes/nodePresentation.ts';
 import { useAppStore } from '../store/useAppStore.ts';
+import { useI18n } from '../i18n/useI18n.ts';
 
 export function NodesPage() {
   const { apiKey, nodes, isConnected, canUseAnonymousApi, fetchConsoleState } = useAppStore();
+  const { t } = useI18n();
   const canManage = canUseAnonymousApi || isConnected;
   const apiCredential = apiKey || '';
 
@@ -43,7 +45,7 @@ export function NodesPage() {
         return current;
       }
 
-      const nextConnectionSettings = parseOneDriveConnectionSettings(current.connectionSettingsText);
+      const nextConnectionSettings = parseKeyValueText(current.connectionSettingsText);
       let changed = false;
 
       if (oneDriveDefaults.clientId && !getCaseInsensitiveSetting(nextConnectionSettings, 'ClientId')) {
@@ -86,7 +88,7 @@ export function NodesPage() {
 
     void getNodeDetail(selectedNodeId, apiCredential)
       .then((detail) => setSelectedNode(detail))
-      .catch((error) => setErrorMsg(error instanceof Error ? error.message : '加载节点详情失败。'));
+      .catch((error) => setErrorMsg(error instanceof Error ? error.message : NodePresentationHelpers.getLoadDetailFailedMessage()));
   }, [apiCredential, selectedNodeId]);
 
   function resetMessages() {
@@ -98,7 +100,7 @@ export function NodesPage() {
     resetMessages();
     setIsCreating(true);
     setIsEditing(false);
-    setFormData(createDefaultNodeForm());
+    setFormData(createDefaultNodeForm(NodePresentationHelpers.getNewNodeDefaultName()));
   }
 
   function startEdit() {
@@ -126,22 +128,22 @@ export function NodesPage() {
     }
 
     if (!formData.id.trim() && isCreating) {
-      setErrorMsg('节点 ID 不能为空。');
+      setErrorMsg(NodePresentationHelpers.getEmptyNodeIdMessage());
       return;
     }
 
     if (!formData.name.trim()) {
-      setErrorMsg('节点名称不能为空。');
+      setErrorMsg(NodePresentationHelpers.getEmptyNodeNameMessage());
       return;
     }
 
     if (formData.nodeType.trim() === 'Local' && !formData.rootPath.trim()) {
-      setErrorMsg('本地节点必须提供根路径。');
+      setErrorMsg(NodePresentationHelpers.getLocalNodeRootPathRequiredMessage());
       return;
     }
 
     if (formData.nodeType.trim() === 'OneDrive' && !formData.rootPath.trim()) {
-      setErrorMsg('OneDrive 节点必须提供根路径，请填写 / 或 /Apps/UniversalSyncService。');
+      setErrorMsg(NodePresentationHelpers.getOneDriveRootPathRequiredMessage());
       return;
     }
 
@@ -152,19 +154,19 @@ export function NodesPage() {
 
       if (isCreating) {
         const created = await createNode(payload, apiCredential);
-        setSuccessMsg('节点已创建。');
+        setSuccessMsg(NodePresentationHelpers.getNodeCreatedMessage());
         setIsCreating(false);
         fetchConsoleState();
         setSelectedNodeId(created.id);
       } else {
         const updated = await updateNode(formData.id, payload, apiCredential);
-        setSuccessMsg('节点已更新。');
+        setSuccessMsg(NodePresentationHelpers.getNodeUpdatedMessage());
         setIsEditing(false);
         fetchConsoleState();
         setSelectedNodeId(updated.id);
       }
     } catch (error) {
-      setErrorMsg(error instanceof Error ? error.message : '保存节点失败。');
+      setErrorMsg(error instanceof Error ? error.message : NodePresentationHelpers.getSaveNodeFailedMessage());
     } finally {
       setSubmitting(false);
     }
@@ -175,7 +177,7 @@ export function NodesPage() {
       return;
     }
 
-    if (!window.confirm(`确认删除节点「${selectedNode.name}」吗？`)) {
+    if (!window.confirm(NodePresentationHelpers.getConfirmDeleteNodeMessage(selectedNode.name))) {
       return;
     }
 
@@ -183,12 +185,12 @@ export function NodesPage() {
       setSubmitting(true);
       resetMessages();
       await deleteNode(selectedNode.id, apiCredential);
-      setSuccessMsg('节点已删除。');
+      setSuccessMsg(NodePresentationHelpers.getNodeDeletedMessage());
       setSelectedNodeId(null);
       setSelectedNode(null);
       fetchConsoleState();
     } catch (error) {
-      setErrorMsg(error instanceof Error ? error.message : '删除节点失败。');
+      setErrorMsg(error instanceof Error ? error.message : NodePresentationHelpers.getDeleteNodeFailedMessage());
     } finally {
       setSubmitting(false);
     }
@@ -196,7 +198,7 @@ export function NodesPage() {
 
   return (
     <div className="page-grid plans-grid">
-      <Panel title="节点管理" subtitle="管理同步节点与宿主默认节点" actions={<button className="primary" type="button" onClick={startCreate} disabled={!canManage || isCreating}>新增节点</button>}>
+      <Panel title={t('web.nav.nodes')} subtitle={NodePresentationHelpers.getNodesPageSubtitle()} actions={<button className="primary" type="button" onClick={startCreate} disabled={!canManage || isCreating}>{NodePresentationHelpers.getCreateNodeTitle()}</button>}>
         <NodeList
           nodes={nodes}
           selectedNodeId={selectedNodeId}
@@ -211,13 +213,13 @@ export function NodesPage() {
       </Panel>
 
       <Panel
-        title={isCreating ? '新增节点' : isEditing ? `编辑节点：${formData?.name}` : selectedNode?.name ?? '节点详情'}
-        subtitle={isCreating ? '创建新的同步节点' : selectedNode?.isImplicitHostNode ? '该节点由宿主运行时自动提供，仅可查看。' : selectedNode ? `节点 ID：${selectedNode.id}` : '请选择左侧节点。'}
+        title={isCreating ? NodePresentationHelpers.getCreateNodeTitle() : isEditing ? `${t('web.actions.edit')}：${formData?.name}` : selectedNode?.name ?? NodePresentationHelpers.getNodeDetailTitle()}
+        subtitle={isCreating ? t('web.nodes.create') : selectedNode?.isImplicitHostNode ? NodePresentationHelpers.getImplicitNodeDescription() : selectedNode ? `ID: ${selectedNode.id}` : NodePresentationHelpers.getSelectLeftNodeMessage()}
         preserveTitleCase={Boolean((isEditing && formData?.name) || (!isCreating && !isEditing && selectedNode))}
         actions={selectedNode && !isCreating && !isEditing ? (
           <div className="plan-detail-actions">
-            <button type="button" onClick={startEdit} disabled={!canManage || selectedNode.isImplicitHostNode}>编辑</button>
-            <button type="button" className="danger-text" onClick={handleDelete} disabled={!canManage || selectedNode.isImplicitHostNode || submitting}>删除</button>
+            <button type="button" onClick={startEdit} disabled={!canManage || selectedNode.isImplicitHostNode}>{t('web.actions.edit')}</button>
+            <button type="button" className="danger-text" onClick={handleDelete} disabled={!canManage || selectedNode.isImplicitHostNode || submitting}>{t('web.actions.delete')}</button>
           </div>
         ) : undefined}>
         {errorMsg ? <MessageBanner tone="error" message={errorMsg} inline /> : null}
@@ -228,40 +230,9 @@ export function NodesPage() {
         ) : selectedNode ? (
           <NodeDetailView selectedNode={selectedNode} />
         ) : (
-          <div className="empty-state editorial-empty" style={{ margin: 'var(--space-6)' }}>请选择一个节点查看详情。</div>
+          <div className="empty-state editorial-empty" style={{ margin: 'var(--space-6)' }}>{NodePresentationHelpers.getEmptyStateMessage()}</div>
         )}
       </Panel>
     </div>
   );
-}
-
-function parseOneDriveConnectionSettings(text: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const line of text.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    const separatorIndex = trimmed.indexOf('=');
-    if (separatorIndex <= 0) continue;
-    const key = trimmed.slice(0, separatorIndex).trim();
-    const value = trimmed.slice(separatorIndex + 1).trim();
-    if (key && value) {
-      result[key] = value;
-    }
-  }
-  return result;
-}
-
-function getCaseInsensitiveSetting(settings: Record<string, string>, key: string): string | undefined {
-  const matchedEntry = Object.entries(settings).find(([existingKey]) => existingKey.toLowerCase() === key.toLowerCase());
-  return matchedEntry?.[1];
-}
-
-function upsertCaseInsensitiveSetting(settings: Record<string, string>, key: string, value: string) {
-  const matchedEntry = Object.keys(settings).find((existingKey) => existingKey.toLowerCase() === key.toLowerCase());
-  if (matchedEntry) {
-    settings[matchedEntry] = value;
-    return;
-  }
-
-  settings[key] = value;
 }

@@ -1,5 +1,7 @@
 import type { NodeSummary } from '../../api.ts';
 import { StatusBadge } from '../common/StatusBadge.tsx';
+import { NodePresentationHelpers } from './nodePresentation.ts';
+import { useI18n } from '../../i18n/useI18n.ts';
 
 type NodeListProps = {
   nodes: NodeSummary[];
@@ -9,8 +11,10 @@ type NodeListProps = {
 };
 
 export function NodeList({ nodes, selectedNodeId, isCreating, onSelectNode }: NodeListProps) {
+  const { t } = useI18n();
+
   if (nodes.length === 0) {
-    return <div className="empty-state">暂无节点配置。</div>;
+    return <div className="empty-state">{NodePresentationHelpers.getEmptyNodeListMessage()}</div>;
   }
 
   return (
@@ -31,7 +35,7 @@ export function NodeList({ nodes, selectedNodeId, isCreating, onSelectNode }: No
             </h4>
             <p title={displayPath}>{displayPath}</p>
           </div>
-          <StatusBadge tone={node.isImplicitHostNode ? 'warning' : node.isEnabled ? 'healthy' : 'muted'} label={node.isImplicitHostNode ? 'host-local' : node.isEnabled ? '已启用' : '已停用'} />
+          <StatusBadge tone={node.isImplicitHostNode ? 'warning' : node.isEnabled ? 'healthy' : 'muted'} label={node.isImplicitHostNode ? 'host-local' : node.isEnabled ? t('web.plans.status.enabled') : t('web.plans.status.disabled')} />
         </button>
       );})}
     </div>

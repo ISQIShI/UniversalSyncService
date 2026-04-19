@@ -237,3 +237,8 @@ export function formatConfiguredAndResolvedPath(node: NodeSummary | undefined, c
     resolved: getResolvedPathDisplay(node, configuredPath, t),
   });
 }
+
+export const PlanPresentationHelpers = {
+  getEmptyPlanListMessage: () => '无可用同步计划。',
+  getNoDescriptionMessage: () => '暂无描述。'
+};
