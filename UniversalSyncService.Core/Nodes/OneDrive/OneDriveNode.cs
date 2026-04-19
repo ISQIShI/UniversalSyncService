@@ -42,6 +42,8 @@ public sealed class OneDriveNode : INode
 
     public NodeMetadata Metadata { get; }
     public NodeCapabilities Capabilities { get; }
+    public IReadOnlySet<string> SupportedSyncItemKinds { get; } =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { SyncItemKinds.FileSystem };
     public NodeState State { get; private set; }
 
     public async Task ConnectAsync(CancellationToken cancellationToken)

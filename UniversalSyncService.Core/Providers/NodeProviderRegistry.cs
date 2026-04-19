@@ -26,6 +26,17 @@ public sealed class NodeProviderRegistry
     }
 
     /// <summary>
+    /// 判断指定节点配置是否支持给定同步对象能力类型。
+    /// </summary>
+    public bool SupportsSyncItemKind(NodeConfiguration configuration, string syncItemKind)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentException.ThrowIfNullOrWhiteSpace(syncItemKind);
+
+        return ResolveProvider(configuration).SupportsSyncItemKind(syncItemKind);
+    }
+
+    /// <summary>
     /// 基于节点配置创建运行时节点实例。
     /// </summary>
     public async Task<INode> CreateAsync(NodeConfiguration configuration, CancellationToken cancellationToken)

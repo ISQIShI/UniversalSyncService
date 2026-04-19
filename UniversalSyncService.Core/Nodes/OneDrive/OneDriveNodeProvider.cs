@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using UniversalSyncService.Abstractions.Nodes;
+using UniversalSyncService.Abstractions.SyncItems;
 using UniversalSyncService.Abstractions.SyncManagement.ConfigNodes;
 
 namespace UniversalSyncService.Core.Nodes.OneDrive;
@@ -23,10 +24,17 @@ public sealed class OneDriveNodeProvider : INodeProvider
         _logger = loggerFactory.CreateLogger<OneDriveNodeProvider>();
     }
 
+    public string ProviderType => "OneDrive";
+
     public bool CanCreate(NodeConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         return configuration.NodeType.Equals("OneDrive", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public bool SupportsSyncItemKind(string syncItemKind)
+    {
+        return SyncItemKinds.IsFileSystem(syncItemKind);
     }
 
     public async Task<INode> CreateAsync(NodeConfiguration configuration, CancellationToken cancellationToken)

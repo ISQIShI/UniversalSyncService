@@ -38,7 +38,7 @@ public sealed class FileSystemSyncTaskRunner : ISyncTaskRunner
 
     public bool CanRun(string syncItemType)
     {
-        return string.Equals(syncItemType, "FileSystem", StringComparison.OrdinalIgnoreCase);
+        return SyncItemKinds.IsFileSystem(syncItemType);
     }
 
     public TaskExecutionRequirement GetExecutionRequirement(
@@ -51,13 +51,16 @@ public sealed class FileSystemSyncTaskRunner : ISyncTaskRunner
         ArgumentNullException.ThrowIfNull(slaveNode);
         ArgumentNullException.ThrowIfNull(slaveConfiguration);
 
-        if (!CanRun(syncItemType))
+        var normalizedSyncItemKind = SyncItemKinds.Normalize(syncItemType);
+        if (!CanRun(normalizedSyncItemKind))
         {
             return TaskExecutionRequirement.MissingSyncItemImplementation;
         }
 
-        // 先检查节点 Provider，再检查同步对象工厂；只有两边都具备时任务才允许进入真实执行路径。
-        if (!_nodeProviderRegistry.CanCreate(masterNode) || !_nodeProviderRegistry.CanCreate(slaveNode))
+        if (!_nodeProviderRegistry.CanCreate(masterNode)
+            || !_nodeProviderRegistry.CanCreate(slaveNode)
+            || !_nodeProviderRegistry.SupportsSyncItemKind(masterNode, normalizedSyncItemKind)
+            || !_nodeProviderRegistry.SupportsSyncItemKind(slaveNode, normalizedSyncItemKind))
         {
             return TaskExecutionRequirement.MissingNodeImplementation;
         }

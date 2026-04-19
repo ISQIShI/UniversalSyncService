@@ -1,6 +1,7 @@
 using UniversalSyncService.Abstractions.SyncManagement.ConfigNodes;
 using UniversalSyncService.Abstractions.SyncManagement.Plans;
 using UniversalSyncService.Abstractions.SyncManagement.Tasks;
+using UniversalSyncService.Abstractions.SyncItems;
 
 namespace UniversalSyncService.Core.SyncManagement.Tasks;
 
@@ -27,8 +28,9 @@ public sealed class SyncTaskRunnerRegistry
         ArgumentNullException.ThrowIfNull(slaveNode);
         ArgumentNullException.ThrowIfNull(slaveConfiguration);
 
-        var runner = ResolveRunner(syncItemType);
-        return runner?.GetExecutionRequirement(syncItemType, masterNode, slaveNode, slaveConfiguration)
+        var normalizedSyncItemType = SyncItemKinds.Normalize(syncItemType);
+        var runner = ResolveRunner(normalizedSyncItemType);
+        return runner?.GetExecutionRequirement(normalizedSyncItemType, masterNode, slaveNode, slaveConfiguration)
             ?? TaskExecutionRequirement.MissingSyncItemImplementation;
     }
 
@@ -36,8 +38,9 @@ public sealed class SyncTaskRunnerRegistry
     {
         ArgumentNullException.ThrowIfNull(task);
 
-        var runner = ResolveRunner(task.SyncItemType)
-            ?? throw new InvalidOperationException($"未找到可用于同步对象类型 {task.SyncItemType} 的任务运行器。");
+        var normalizedSyncItemType = SyncItemKinds.Normalize(task.SyncItemType);
+        var runner = ResolveRunner(normalizedSyncItemType)
+            ?? throw new InvalidOperationException($"未找到可用于同步对象类型 {normalizedSyncItemType} 的任务运行器。");
 
         return runner.ExecuteAsync(task, cancellationToken);
     }

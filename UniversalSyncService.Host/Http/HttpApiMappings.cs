@@ -6,6 +6,7 @@ using UniversalSyncService.Abstractions.SyncManagement.Engine;
 using UniversalSyncService.Abstractions.SyncManagement.History;
 using UniversalSyncService.Abstractions.SyncManagement.Tasks;
 using UniversalSyncService.Abstractions.SyncManagement.Plans;
+using UniversalSyncService.Abstractions.SyncItems;
 using UniversalSyncService.Core.Nodes.OneDrive;
 using UniversalSyncService.Core.Providers;
 using UniversalSyncService.Core.SyncManagement.ConfigNodes;
@@ -610,7 +611,7 @@ public static class HttpApiMappings
             request.Name.Trim(),
             NormalizeOptionalText(request.Description),
             NormalizeMasterNodeId(request.MasterNodeId),
-            request.SyncItemType.Trim(),
+            SyncItemKinds.Normalize(request.SyncItemType),
             request.IsEnabled,
             schedule,
             slaves,

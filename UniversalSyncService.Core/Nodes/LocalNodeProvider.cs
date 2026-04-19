@@ -1,4 +1,5 @@
 using UniversalSyncService.Abstractions.Nodes;
+using UniversalSyncService.Abstractions.SyncItems;
 using UniversalSyncService.Abstractions.SyncManagement.ConfigNodes;
 using UniversalSyncService.Core.Providers;
 
@@ -17,10 +18,17 @@ public sealed class LocalNodeProvider : INodeProvider
         _syncItemFactoryRegistry = syncItemFactoryRegistry;
     }
 
+    public string ProviderType => "Local";
+
     public bool CanCreate(NodeConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         return string.Equals(configuration.NodeType, "Local", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public bool SupportsSyncItemKind(string syncItemKind)
+    {
+        return SyncItemKinds.IsFileSystem(syncItemKind);
     }
 
     public Task<INode> CreateAsync(NodeConfiguration configuration, CancellationToken cancellationToken)

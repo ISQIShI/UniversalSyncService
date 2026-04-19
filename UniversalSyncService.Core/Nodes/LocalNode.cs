@@ -39,6 +39,9 @@ public sealed class LocalNode : INode
 
     public NodeCapabilities Capabilities { get; }
 
+    public IReadOnlySet<string> SupportedSyncItemKinds { get; } =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { SyncItemKinds.FileSystem };
+
     public NodeState State { get; private set; }
 
     public Task ConnectAsync(CancellationToken cancellationToken)

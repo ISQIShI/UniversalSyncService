@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using UniversalSyncService.Abstractions.SyncManagement.ConfigNodes;
 using UniversalSyncService.Abstractions.SyncManagement.Engine;
+using UniversalSyncService.Abstractions.SyncItems;
 using UniversalSyncService.Abstractions.SyncManagement.Plans;
 using UniversalSyncService.Abstractions.SyncManagement.Tasks;
 
@@ -33,7 +34,7 @@ public sealed class SyncTask : ISyncTask
         MasterNode = masterNode;
         SlaveNode = slaveNode;
         SyncMode = syncMode;
-        SyncItemType = syncItemType;
+        SyncItemType = SyncItemKinds.Normalize(syncItemType);
         SourcePath = sourcePath;
         TargetPath = targetPath;
         ConflictResolutionStrategy = conflictResolutionStrategy;

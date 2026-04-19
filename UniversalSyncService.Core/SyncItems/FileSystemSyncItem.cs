@@ -58,6 +58,8 @@ public sealed class FileSystemSyncItem : ISyncItem
         _childrenFactory = childrenFactory;
     }
 
+    public string Kind => SyncItemKinds.FileSystem;
+
     public SyncItemMetadata Metadata { get; }
 
     public SyncItemType ItemType { get; }
