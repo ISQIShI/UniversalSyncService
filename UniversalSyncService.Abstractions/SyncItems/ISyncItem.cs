@@ -6,6 +6,11 @@ namespace UniversalSyncService.Abstractions.SyncItems;
 public interface ISyncItem
 {
     /// <summary>
+    /// 获取同步对象能力类型标识。
+    /// </summary>
+    string Kind { get; }
+
+    /// <summary>
     /// 获取同步项的元数据。
     /// </summary>
     SyncItemMetadata Metadata { get; }

@@ -8,11 +8,21 @@ namespace UniversalSyncService.Abstractions.Nodes;
 public interface INodeProvider
 {
     /// <summary>
+    /// 获取节点提供程序标识。
+    /// </summary>
+    string ProviderType { get; }
+
+    /// <summary>
     /// 判断是否可以基于给定配置创建节点。
     /// </summary>
     /// <param name="configuration">节点配置对象。</param>
     /// <returns>如果支持该配置，则返回 <c>true</c>；否则返回 <c>false</c>。</returns>
     bool CanCreate(NodeConfiguration configuration);
+
+    /// <summary>
+    /// 判断当前 Provider 是否支持给定同步对象能力类型。
+    /// </summary>
+    bool SupportsSyncItemKind(string syncItemKind);
 
     /// <summary>
     /// 创建节点实例。

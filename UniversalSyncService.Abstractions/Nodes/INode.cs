@@ -18,6 +18,11 @@ public interface INode
     NodeCapabilities Capabilities { get; }
 
     /// <summary>
+    /// 获取节点支持的同步对象能力类型。
+    /// </summary>
+    IReadOnlySet<string> SupportedSyncItemKinds { get; }
+
+    /// <summary>
     /// 获取节点当前状态。
     /// </summary>
     NodeState State { get; }
