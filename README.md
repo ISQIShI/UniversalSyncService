@@ -1,3 +1,5 @@
+> Languages: **English** | [简体中文](docs/README.zh-CN.md)
+
 # Universal Sync Service
 
 A headless file synchronization service with plugin-based node providers and Web management console.
@@ -40,19 +42,10 @@ npm --prefix "UniversalSyncService.Web" run dev
 npm --prefix "UniversalSyncService.Web" run build
 ```
 
-### Run integration tests
+## Testing
 
-```powershell
-dotnet test "tests/UniversalSyncService.Host.IntegrationTests/UniversalSyncService.Host.IntegrationTests.csproj"
-dotnet test "tests/UniversalSyncService.IntegrationTests/UniversalSyncService.IntegrationTests.csproj"
-```
-
-### Run Playwright end-to-end tests
-
-```powershell
-npm --prefix "UniversalSyncService.Web" run test:e2e
-```
+See [Testing Guide](docs/TESTING.md) for detailed test instructions.
 
 ## Notes
 
-This README can be generated from docs/i18n/README.template.md and locale resources.
+This README is generated from template and locale resources.

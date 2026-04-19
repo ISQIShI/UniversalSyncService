@@ -1,3 +1,5 @@
+> Languages: [English](../README.md) | **简体中文**
+
 # Universal Sync Service
 
 一个无头文件同步服务，支持插件化节点提供者与 Web 管理控制台。
@@ -40,19 +42,10 @@ npm --prefix "UniversalSyncService.Web" run dev
 npm --prefix "UniversalSyncService.Web" run build
 ```
 
-### 运行集成测试
+## 测试指南
 
-```powershell
-dotnet test "tests/UniversalSyncService.Host.IntegrationTests/UniversalSyncService.Host.IntegrationTests.csproj"
-dotnet test "tests/UniversalSyncService.IntegrationTests/UniversalSyncService.IntegrationTests.csproj"
-```
-
-### 运行 Playwright 端到端测试
-
-```powershell
-npm --prefix "UniversalSyncService.Web" run test:e2e
-```
+详见 [测试指南](docs/TESTING.md) 获取详细的测试指令。
 
 ## 说明
 
-该 README 可基于 docs/i18n/README.template.md 与语言资源生成。
+该 README 是基于模板与语言资源生成的。
