@@ -62,7 +62,15 @@ public sealed class FileSystemSyncItem : ISyncItem
 
     public SyncItemMetadata Metadata { get; }
 
+    public string Identity => Metadata.Id;
+
     public SyncItemType ItemType { get; }
+
+    public bool SupportsCapability(SyncItemCapabilities capability)
+    {
+        var capabilities = ResolveCapabilities();
+        return (capabilities & capability) == capability;
+    }
 
     /// <summary>
     /// 打开读取流。
@@ -241,6 +249,29 @@ public sealed class FileSystemSyncItem : ISyncItem
         }
 
         return Task.FromResult((IDictionary<string, object>)extendedMetadata);
+    }
+
+    private SyncItemCapabilities ResolveCapabilities()
+    {
+        var capabilities = SyncItemCapabilities.CanProvideExtendedMetadata;
+
+        if (ItemType == SyncItemType.File)
+        {
+            capabilities |= SyncItemCapabilities.CanReadContent
+                | SyncItemCapabilities.CanComputeChecksum;
+
+            if (_streamWriterFactory is not null || _absolutePath is not null)
+            {
+                capabilities |= SyncItemCapabilities.CanWriteContent;
+            }
+        }
+
+        if (ItemType is SyncItemType.Directory or SyncItemType.Container)
+        {
+            capabilities |= SyncItemCapabilities.CanEnumerateChildren;
+        }
+
+        return capabilities;
     }
 
     /// <summary>

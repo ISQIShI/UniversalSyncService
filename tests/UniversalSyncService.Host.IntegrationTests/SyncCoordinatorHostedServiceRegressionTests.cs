@@ -215,11 +215,27 @@ public sealed class SyncCoordinatorHostedServiceRegressionTests : IAsyncLifetime
 
         public SyncPlan? GetPlanById(string planId) => plans.FirstOrDefault(plan => string.Equals(plan.Id, planId, StringComparison.OrdinalIgnoreCase));
 
-        public Task<SyncPlan> CreatePlanAsync(string name, string? description, string masterNodeId, string syncItemType, IEnumerable<SyncPlanSlaveConfiguration> slaveConfigurations, SyncSchedule schedule) => throw new NotSupportedException();
+        public Task<SyncPlan> CreatePlanAsync(
+            string name,
+            string? description,
+            string masterNodeId,
+            string syncItemType,
+            IEnumerable<SyncPlanSlaveConfiguration> slaveConfigurations,
+            SyncSchedule schedule,
+            SyncPlanDeletionPolicy? deletionPolicy = null) => throw new NotSupportedException();
 
         public Task<SyncPlan> UpdatePlanAsync(string planId, Action<SyncPlan> updates) => throw new NotSupportedException();
 
-        public Task<SyncPlan> ReplacePlanAsync(string planId, string name, string? description, string masterNodeId, string syncItemType, IEnumerable<SyncPlanSlaveConfiguration> slaveConfigurations, SyncSchedule schedule, bool isEnabled) => throw new NotSupportedException();
+        public Task<SyncPlan> ReplacePlanAsync(
+            string planId,
+            string name,
+            string? description,
+            string masterNodeId,
+            string syncItemType,
+            IEnumerable<SyncPlanSlaveConfiguration> slaveConfigurations,
+            SyncSchedule schedule,
+            bool isEnabled,
+            SyncPlanDeletionPolicy? deletionPolicy = null) => throw new NotSupportedException();
 
         public Task DeletePlanAsync(string planId) => throw new NotSupportedException();
 

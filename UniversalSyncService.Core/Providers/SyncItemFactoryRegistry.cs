@@ -16,27 +16,28 @@ public sealed class SyncItemFactoryRegistry
     }
 
     /// <summary>
-    /// 判断路径是否存在可用工厂。
+    /// 判断同步对象能力类型是否存在可用工厂。
     /// </summary>
-    public bool SupportsPath(string path)
+    public bool SupportsKind(string syncItemKind)
     {
-        ArgumentNullException.ThrowIfNull(path);
-        return _factories.Any(factory => factory.SupportsPath(path));
+        ArgumentException.ThrowIfNullOrWhiteSpace(syncItemKind);
+        return _factories.Any(factory => factory.SupportsKind(syncItemKind));
     }
 
     /// <summary>
-    /// 按路径创建同步对象。
+    /// 按对象身份创建同步对象。
     /// </summary>
-    public async Task<ISyncItem> CreateFromPathAsync(string path, CancellationToken cancellationToken)
+    public async Task<ISyncItem> CreateFromIdentityAsync(string syncItemKind, string identity, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(path);
+        ArgumentException.ThrowIfNullOrWhiteSpace(syncItemKind);
+        ArgumentException.ThrowIfNullOrWhiteSpace(identity);
 
-        var factory = _factories.FirstOrDefault(candidate => candidate.SupportsPath(path));
+        var factory = _factories.FirstOrDefault(candidate => candidate.SupportsKind(syncItemKind));
         if (factory is null)
         {
-            throw new InvalidOperationException($"未找到可用于路径 {path} 的同步对象工厂。");
+            throw new InvalidOperationException($"未找到可用于能力类型 {syncItemKind} 的同步对象工厂。");
         }
 
-        return await factory.CreateFromPathAsync(path, cancellationToken);
+        return await factory.CreateFromIdentityAsync(identity, cancellationToken);
     }
 }

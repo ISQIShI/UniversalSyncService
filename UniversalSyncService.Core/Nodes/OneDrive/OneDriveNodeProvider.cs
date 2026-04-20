@@ -37,6 +37,12 @@ public sealed class OneDriveNodeProvider : INodeProvider
         return SyncItemKinds.IsFileSystem(syncItemKind);
     }
 
+    public bool SupportsCapability(NodeCapabilities capability)
+    {
+        var capabilities = NodeCapabilities.CanRead | NodeCapabilities.CanWrite | NodeCapabilities.CanDelete | NodeCapabilities.CanStream;
+        return (capabilities & capability) == capability;
+    }
+
     public async Task<INode> CreateAsync(NodeConfiguration configuration, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(configuration);
@@ -120,41 +126,47 @@ public sealed class OneDriveNodeProvider : INodeProvider
         return _clientFactory.EnsureWarmAuthenticationReadyAsync(options, cancellationToken);
     }
 
-    public bool SupportsAbsoluteScopedPath(NodeConfiguration configuration)
+    public bool SupportsScopeBoundary(NodeConfiguration configuration, string? scopeBoundary)
     {
         ArgumentNullException.ThrowIfNull(configuration);
-        return false;
+
+        if (string.IsNullOrWhiteSpace(scopeBoundary))
+        {
+            return true;
+        }
+
+        return !Path.IsPathRooted(scopeBoundary) && !scopeBoundary.StartsWith("\\\\", StringComparison.Ordinal);
     }
 
-    public string ResolveScopedRoot(NodeConfiguration configuration, string? scopedPath)
+    public string ResolveScopeBoundary(NodeConfiguration configuration, string? scopeBoundary)
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
         var options = CreateOptionsWithDefaults(configuration.ConnectionSettings);
         var normalizedRoot = NormalizeRemotePath(options.RootPath);
-        if (string.IsNullOrWhiteSpace(scopedPath) || string.Equals(scopedPath.Trim(), ".", StringComparison.Ordinal))
+        if (string.IsNullOrWhiteSpace(scopeBoundary) || string.Equals(scopeBoundary.Trim(), ".", StringComparison.Ordinal))
         {
             return FormatDisplayRootPath(options.RootPath) ?? "/";
         }
 
-        if (string.Equals(scopedPath.Trim(), "..", StringComparison.Ordinal) || scopedPath.Contains("../", StringComparison.Ordinal) || scopedPath.Contains("..\\", StringComparison.Ordinal))
+        if (string.Equals(scopeBoundary.Trim(), "..", StringComparison.Ordinal) || scopeBoundary.Contains("../", StringComparison.Ordinal) || scopeBoundary.Contains("..\\", StringComparison.Ordinal))
         {
             throw new InvalidOperationException("OneDrive 节点不支持使用 .. 跳出远端根路径，请改用根路径下的相对路径。");
         }
 
-        if (Path.IsPathRooted(scopedPath) || scopedPath.StartsWith("\\\\", StringComparison.Ordinal))
+        if (Path.IsPathRooted(scopeBoundary) || scopeBoundary.StartsWith("\\\\", StringComparison.Ordinal))
         {
             throw new InvalidOperationException("OneDrive 节点不支持在计划中使用本机绝对路径，请改用远端相对路径。");
         }
 
-        var normalizedScopedPath = NormalizeRemotePath(scopedPath);
+        var normalizedScopedPath = NormalizeRemotePath(scopeBoundary);
         var resolvedRoot = string.IsNullOrWhiteSpace(normalizedRoot)
             ? normalizedScopedPath
             : $"{normalizedRoot}/{normalizedScopedPath}";
         return string.IsNullOrWhiteSpace(resolvedRoot) ? "/" : $"/{resolvedRoot}";
     }
 
-    public string? GetDisplayRootPath(NodeConfiguration configuration)
+    public string? GetDisplayScopeBoundary(NodeConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
 

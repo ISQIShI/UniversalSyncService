@@ -19,6 +19,10 @@
 | `UniversalSyncService.Host.IntegrationTests` | {{testing.entrypoints.table.hostDesc}} |
 | `UniversalSyncService.IntegrationTests` | {{testing.entrypoints.table.syncDesc}} |
 
+## {{testing.matrix.title}}
+
+{{testing.matrix.description}}
+
 ## {{testing.config.title}}
 
 {{testing.config.description}}

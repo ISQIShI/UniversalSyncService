@@ -13,6 +13,7 @@ namespace UniversalSyncService.Core.SyncManagement.History;
 /// <summary>
 /// 基于 SQLite 的同步历史管理器。
 /// 这里保留了对旧 JSON 文件的自动迁移，避免已有测试数据丢失。
+/// 说明：历史管理器只负责持久化与查询锚点，不负责向运行时 contexts 注入路径来源。
 /// </summary>
 public sealed class SyncHistoryManager : ISyncHistoryManager, IDisposable, IAsyncDisposable
 {
@@ -58,6 +59,8 @@ public sealed class SyncHistoryManager : ISyncHistoryManager, IDisposable, IAsyn
 
     public async Task<IReadOnlyList<SyncHistoryEntry>> GetPreviousSyncHistoryAsync(string planId, string nodeId)
     {
+        // 仅提供历史查询能力；运行时 contexts 必须由扫描结果/显式删除候选构造，
+        // 调用方不得把这里返回的全量 keys 当作发现源进行回流注入。
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(planId);
         ArgumentNullException.ThrowIfNull(nodeId);

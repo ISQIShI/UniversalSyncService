@@ -19,7 +19,11 @@ There are two main C# test projects in the `tests/` directory.
 | Test Suite | Description |
 |---|---|
 | `UniversalSyncService.Host.IntegrationTests` | Verifies HTTP API, gRPC endpoints, and Web console asset mapping. Uses WebApplicationFactory. |
-| `UniversalSyncService.IntegrationTests` | Focuses on the sync engine, node providers (Local/OneDrive), and end-to-end sync logic. |
+| `UniversalSyncService.IntegrationTests` | Focuses on the sync engine, unified node conformance matrix, and deletion policy guards. |
+
+## Unified Conformance Matrix
+
+All node providers (Local, OneDrive, etc.) must pass a unified conformance matrix. This ensures consistent behavior for capability-driven operations like identity-based deletion and scope boundary resolution.
 
 ## Test Configuration
 

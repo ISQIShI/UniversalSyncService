@@ -25,6 +25,11 @@ public interface INodeProvider
     bool SupportsSyncItemKind(string syncItemKind);
 
     /// <summary>
+    /// 判断当前 Provider 是否支持给定节点能力。
+    /// </summary>
+    bool SupportsCapability(NodeCapabilities capability);
+
+    /// <summary>
     /// 创建节点实例。
     /// </summary>
     /// <param name="configuration">节点配置对象。</param>
@@ -48,17 +53,17 @@ public interface INodeProvider
     Task EnsureAuthenticatedAsync(NodeConfiguration configuration, CancellationToken cancellationToken);
 
     /// <summary>
-    /// 判断当前节点类型是否支持在计划中使用绝对路径。
+    /// 判断给定对象作用域边界是否可用于当前 Provider。
     /// </summary>
-    bool SupportsAbsoluteScopedPath(NodeConfiguration configuration);
+    bool SupportsScopeBoundary(NodeConfiguration configuration, string? scopeBoundary);
 
     /// <summary>
-    /// 将计划中的 scopedPath 解析为当前节点最终使用的根路径语义。
+    /// 将计划中的 scopeBoundary 解析为当前节点最终使用的对象作用域标识。
     /// </summary>
-    string ResolveScopedRoot(NodeConfiguration configuration, string? scopedPath);
+    string ResolveScopeBoundary(NodeConfiguration configuration, string? scopeBoundary);
 
     /// <summary>
-    /// 获取用于 UI/HTTP API 展示的节点根路径。
+    /// 获取用于 UI/HTTP API 展示的节点作用域标识。
     /// </summary>
-    string? GetDisplayRootPath(NodeConfiguration configuration);
+    string? GetDisplayScopeBoundary(NodeConfiguration configuration);
 }

@@ -42,8 +42,16 @@ public sealed class OneDriveNode : INode
 
     public NodeMetadata Metadata { get; }
     public NodeCapabilities Capabilities { get; }
-    public IReadOnlySet<string> SupportedSyncItemKinds { get; } =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { SyncItemKinds.FileSystem };
+    public bool SupportsSyncItemKind(string syncItemKind)
+    {
+        return SyncItemKinds.IsFileSystem(syncItemKind);
+    }
+
+    public bool SupportsCapability(NodeCapabilities capability)
+    {
+        return (Capabilities & capability) == capability;
+    }
+
     public NodeState State { get; private set; }
 
     public async Task ConnectAsync(CancellationToken cancellationToken)
@@ -243,19 +251,19 @@ public sealed class OneDriveNode : INode
         await Task.CompletedTask;
     }
 
-    public async Task DeleteAsync(string relativePath, CancellationToken cancellationToken)
+    public async Task DeleteAsync(string itemIdentity, CancellationToken cancellationToken)
     {
         if (State != NodeState.Connected)
         {
             throw new InvalidOperationException("节点未连接");
         }
 
-        if (string.IsNullOrWhiteSpace(relativePath))
+        if (string.IsNullOrWhiteSpace(itemIdentity))
         {
             throw new InvalidOperationException("删除目标路径不能为空；如需删除配置根目录，请显式调用 DeleteConfiguredRootAsync。");
         }
 
-        var targetPath = NormalizeRelativePath(relativePath);
+        var targetPath = NormalizeRelativePath(itemIdentity);
         
         try
         {

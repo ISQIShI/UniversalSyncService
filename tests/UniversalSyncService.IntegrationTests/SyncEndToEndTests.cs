@@ -512,8 +512,15 @@ public sealed class SyncEndToEndTests : IAsyncLifetime
         var planManager = host.Services.GetRequiredService<ISyncPlanManager>();
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => planManager.ExecutePlanNowAsync("local-filesystem-test", CancellationToken.None));
-        Assert.Contains("从节点路径", exception.Message);
-        Assert.Contains("本地节点（Local/host-local）", exception.Message);
+        Assert.True(
+            exception.Message.Contains("从节点路径", StringComparison.Ordinal)
+            || exception.Message.Contains("从节点作用域", StringComparison.Ordinal),
+            $"期望错误信息包含“从节点路径”或“从节点作用域”，实际：{exception.Message}");
+        Assert.True(
+            exception.Message.Contains("Provider", StringComparison.Ordinal)
+            || exception.Message.Contains("作用域边界", StringComparison.Ordinal)
+            || exception.Message.Contains("不受当前 Provider 支持", StringComparison.Ordinal),
+            $"期望错误信息包含 Provider 作用域限制语义，实际：{exception.Message}");
 
         await host.StopAsync();
     }

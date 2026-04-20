@@ -19,7 +19,11 @@ Universal Sync Service 采用多层级测试策略，确保核心逻辑、宿主
 | 测试套件 | 说明 |
 |---|---|
 | `UniversalSyncService.Host.IntegrationTests` | 验证 HTTP API、gRPC 端点和 Web 控制台资源映射。使用 WebApplicationFactory。 |
-| `UniversalSyncService.IntegrationTests` | 专注于同步引擎、节点提供者 (Local/OneDrive) 以及端到端同步逻辑。 |
+| `UniversalSyncService.IntegrationTests` | 专注于同步引擎、统一节点一致性矩阵以及删除策略守卫。 |
+
+## 统一一致性矩阵 (Conformance Matrix)
+
+所有节点提供者（Local、OneDrive 等）都必须通过统一的一致性矩阵测试。这确保了能力驱动操作（如基于身份的删除和范围边界解析）在不同提供者间的一致行为。
 
 ## 测试配置
 

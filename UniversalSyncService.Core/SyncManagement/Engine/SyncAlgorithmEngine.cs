@@ -63,6 +63,16 @@ public sealed class SyncAlgorithmEngine : ISyncAlgorithmEngine
         var decisions = new Dictionary<string, SyncDecision>(StringComparer.OrdinalIgnoreCase);
         foreach (var context in contexts)
         {
+            // 运行时 context 重构：
+            // 双方当前都不存在且不是显式删除候选时，不进入决策链，
+            // 防止历史残留路径在算法层被再次当作有效输入。
+            if (context.MasterMetadata is null
+                && context.SlaveMetadata is null
+                && !context.IsExplicitDeleteCandidate)
+            {
+                continue;
+            }
+
             decisions[context.Path] = CalculateDecision(context, syncMode);
         }
 

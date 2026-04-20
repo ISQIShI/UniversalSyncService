@@ -25,6 +25,7 @@ public sealed class SyncTask : ISyncTask
         string? sourcePath,
         string? targetPath,
         ConflictResolutionStrategy conflictResolutionStrategy,
+        SyncPlanDeletionPolicy deletionPolicy,
         TaskExecutionRequirement executionRequirement,
         Func<ISyncTask, CancellationToken, Task<SyncTaskResult>> executeCoreAsync,
         ILogger<SyncTask> logger)
@@ -38,6 +39,7 @@ public sealed class SyncTask : ISyncTask
         SourcePath = sourcePath;
         TargetPath = targetPath;
         ConflictResolutionStrategy = conflictResolutionStrategy;
+        DeletionPolicy = deletionPolicy?.Clone() ?? new SyncPlanDeletionPolicy();
         _executionRequirement = executionRequirement;
         _executeCoreAsync = executeCoreAsync;
         _logger = logger;
@@ -61,6 +63,8 @@ public sealed class SyncTask : ISyncTask
     public string? TargetPath { get; }
 
     public ConflictResolutionStrategy ConflictResolutionStrategy { get; }
+
+    public SyncPlanDeletionPolicy DeletionPolicy { get; }
 
     public SyncTaskState State { get; private set; }
 

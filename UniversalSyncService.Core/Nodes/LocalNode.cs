@@ -39,8 +39,15 @@ public sealed class LocalNode : INode
 
     public NodeCapabilities Capabilities { get; }
 
-    public IReadOnlySet<string> SupportedSyncItemKinds { get; } =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { SyncItemKinds.FileSystem };
+    public bool SupportsSyncItemKind(string syncItemKind)
+    {
+        return SyncItemKinds.IsFileSystem(syncItemKind);
+    }
+
+    public bool SupportsCapability(NodeCapabilities capability)
+    {
+        return (Capabilities & capability) == capability;
+    }
 
     public NodeState State { get; private set; }
 
@@ -115,12 +122,12 @@ public sealed class LocalNode : INode
     /// <summary>
     /// 删除本地节点上的相对路径项。
     /// </summary>
-    public Task DeleteAsync(string relativePath, CancellationToken cancellationToken)
+    public Task DeleteAsync(string itemIdentity, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        ArgumentNullException.ThrowIfNull(relativePath);
+        ArgumentNullException.ThrowIfNull(itemIdentity);
 
-        var absolutePath = ResolveAbsolutePath(relativePath);
+        var absolutePath = ResolveAbsolutePath(itemIdentity);
 
         if (File.Exists(absolutePath))
         {

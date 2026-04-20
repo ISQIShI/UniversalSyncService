@@ -98,6 +98,27 @@ public sealed class SyncPlanOptions
 
     [ConfigComment("计划累计执行次数。")]
     public int ExecutionCount { get; set; }
+
+    [ConfigComment("计划级删除守卫策略。")]
+    public SyncPlanDeletionPolicyOptions DeletionPolicy { get; set; } = new();
+}
+
+public sealed class SyncPlanDeletionPolicyOptions
+{
+    [ConfigComment("每轮同步允许的最大删除候选数量。")]
+    public int DeleteThreshold { get; set; } = 100;
+
+    [ConfigComment("每轮同步允许删除候选占总上下文条目的百分比（0-100）。")]
+    public double PercentThreshold { get; set; } = 10d;
+
+    [ConfigComment("阈值触发后的 fail-safe 模式：Block / Confirm / Ignore。")]
+    public string FailSafeMode { get; set; } = "Block";
+
+    [ConfigComment("是否允许本轮越过删除阈值（一次性管理员确认）。")]
+    public bool AllowThresholdBreachForCurrentRun { get; set; }
+
+    [ConfigComment("管理员阈值越权原因（用于审计）。")]
+    public string? ThresholdOverrideReason { get; set; }
 }
 
 public sealed class SyncPlanSlaveConfigurationOptions

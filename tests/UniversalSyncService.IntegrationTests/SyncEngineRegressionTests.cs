@@ -142,6 +142,114 @@ public sealed class SyncEngineRegressionTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_ShouldBlock_WhenProjectedDeletionBreachesThresholdInBlockMode()
+    {
+        // Arrange
+        var policy = new SyncPlanDeletionPolicy
+        {
+            DeleteThreshold = 100,
+            PercentThreshold = 10,
+            FailSafeMode = SyncPlanFailSafeMode.Block
+        };
+        var task = CreateDeleteGuardTask(
+            "plan-delete-guard-block",
+            policy,
+            new Dictionary<string, SyncDecision>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["obsolete-1.txt"] = SyncDecision.CleanHistory,
+                ["obsolete-2.txt"] = SyncDecision.CleanHistory
+            });
+
+        // Act
+        var result = await task.ExecuteAsync(CancellationToken.None);
+
+        // Assert
+        Assert.Equal(SyncTaskResult.Failed, result);
+        Assert.Contains(task.Errors ?? [], error => error.Contains("删除守卫", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ShouldRequireApproval_WhenProjectedDeletionBreachesThresholdInConfirmMode()
+    {
+        // Arrange
+        var policy = new SyncPlanDeletionPolicy
+        {
+            DeleteThreshold = 100,
+            PercentThreshold = 10,
+            FailSafeMode = SyncPlanFailSafeMode.Confirm
+        };
+        var task = CreateDeleteGuardTask(
+            "plan-delete-guard-confirm",
+            policy,
+            new Dictionary<string, SyncDecision>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["obsolete-1.txt"] = SyncDecision.CleanHistory,
+                ["obsolete-2.txt"] = SyncDecision.CleanHistory
+            });
+
+        // Act
+        var result = await task.ExecuteAsync(CancellationToken.None);
+
+        // Assert
+        Assert.Equal(SyncTaskResult.Failed, result);
+        Assert.Contains(task.Errors ?? [], error => error.Contains("确认", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ShouldProceed_WhenConfirmModeHasAdminOverride()
+    {
+        // Arrange
+        var policy = new SyncPlanDeletionPolicy
+        {
+            DeleteThreshold = 100,
+            PercentThreshold = 10,
+            FailSafeMode = SyncPlanFailSafeMode.Confirm,
+            AllowThresholdBreachForCurrentRun = true,
+            ThresholdOverrideReason = "approved-by-admin"
+        };
+        var task = CreateDeleteGuardTask(
+            "plan-delete-guard-confirm-override",
+            policy,
+            new Dictionary<string, SyncDecision>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["obsolete-1.txt"] = SyncDecision.CleanHistory,
+                ["obsolete-2.txt"] = SyncDecision.CleanHistory
+            });
+
+        // Act
+        var result = await task.ExecuteAsync(CancellationToken.None);
+
+        // Assert
+        Assert.Equal(SyncTaskResult.Success, result);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ShouldProceed_WhenProjectedDeletionBreachesThresholdInIgnoreMode()
+    {
+        // Arrange
+        var policy = new SyncPlanDeletionPolicy
+        {
+            DeleteThreshold = 100,
+            PercentThreshold = 10,
+            FailSafeMode = SyncPlanFailSafeMode.Ignore
+        };
+        var task = CreateDeleteGuardTask(
+            "plan-delete-guard-ignore",
+            policy,
+            new Dictionary<string, SyncDecision>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["obsolete-1.txt"] = SyncDecision.CleanHistory,
+                ["obsolete-2.txt"] = SyncDecision.CleanHistory
+            });
+
+        // Act
+        var result = await task.ExecuteAsync(CancellationToken.None);
+
+        // Assert
+        Assert.Equal(SyncTaskResult.Success, result);
+    }
+
+    [Fact]
     public async Task ResolveAsync_ShouldPush_WhenKeepLargerAndMasterIsLarger()
     {
         // Arrange
@@ -277,6 +385,7 @@ public sealed class SyncEngineRegressionTests
             sourcePath: null,
             targetPath: null,
             conflictResolutionStrategy: ConflictResolutionStrategy.Manual,
+            deletionPolicy: new SyncPlanDeletionPolicy(),
             executionRequirement: TaskExecutionRequirement.Ready,
             executeCoreAsync: (syncTask, ct) => runner.ExecuteAsync(syncTask, ct),
             logger: NullLogger<SyncTask>.Instance);
@@ -510,11 +619,49 @@ public sealed class SyncEngineRegressionTests
             sourcePath: null,
             targetPath: null,
             conflictResolutionStrategy: ConflictResolutionStrategy.Manual,
+            deletionPolicy: new SyncPlanDeletionPolicy(),
             executionRequirement: TaskExecutionRequirement.Ready,
             executeCoreAsync: (syncTask, ct) => runner.ExecuteAsync(syncTask, ct),
             logger: NullLogger<SyncTask>.Instance);
 
         return new GenericDeleteContractScenario(task, masterNode, slaveNode);
+    }
+
+    private static SyncTask CreateDeleteGuardTask(
+        string planId,
+        SyncPlanDeletionPolicy deletionPolicy,
+        IReadOnlyDictionary<string, SyncDecision> decisions)
+    {
+        var masterConfig = CreateNodeConfiguration("master", "Local");
+        var slaveConfig = CreateNodeConfiguration("slave", "Local");
+        var masterNode = new TestNode("master", NodeType.Local);
+        var slaveNode = new TestNode("slave", NodeType.Local);
+        var historyEntries = decisions.Keys
+            .Select(path => CreateHistoryEntry(planId, masterConfig.Id, CreateMetadata(path, 5, DateTimeOffset.UtcNow, checksum: null), FileHistoryState.Exists))
+            .ToList();
+        var historyManager = new InMemoryHistoryManager(historyEntries, latestVersion: 1);
+
+        var runner = new FileSystemSyncTaskRunner(
+            new NodeProviderRegistry([new TestNodeProvider(masterConfig, masterNode), new TestNodeProvider(slaveConfig, slaveNode)]),
+            new StubBatchSyncAlgorithmEngine(decisions),
+            new StubConflictResolver(),
+            historyManager,
+            NullLogger<FileSystemSyncTaskRunner>.Instance);
+
+        return new SyncTask(
+            id: $"task-{planId}",
+            planId: planId,
+            masterNode: masterConfig,
+            slaveNode: slaveConfig,
+            syncMode: SyncMode.Pull,
+            syncItemType: "FileSystem",
+            sourcePath: null,
+            targetPath: null,
+            conflictResolutionStrategy: ConflictResolutionStrategy.Manual,
+            deletionPolicy: deletionPolicy,
+            executionRequirement: TaskExecutionRequirement.Ready,
+            executeCoreAsync: (syncTask, ct) => runner.ExecuteAsync(syncTask, ct),
+            logger: NullLogger<SyncTask>.Instance);
     }
 
     private static async Task WaitUntilAsync(Func<bool> predicate, int timeoutMs = 5000)
@@ -577,6 +724,21 @@ public sealed class SyncEngineRegressionTests
         public SyncDecision CalculateDecision(SyncPathSyncContext context, SyncMode syncMode)
         {
             return context.Path.Equals(path, StringComparison.OrdinalIgnoreCase) ? decision : SyncDecision.DoNothing;
+        }
+
+        public Task<Dictionary<string, SyncDecision>> CalculateDecisionsAsync(IEnumerable<SyncPathSyncContext> contexts, SyncMode syncMode)
+        {
+            return Task.FromResult(contexts.ToDictionary(context => context.Path, context => CalculateDecision(context, syncMode), StringComparer.OrdinalIgnoreCase));
+        }
+    }
+
+    private sealed class StubBatchSyncAlgorithmEngine(IReadOnlyDictionary<string, SyncDecision> decisions) : ISyncAlgorithmEngine
+    {
+        public SyncDecision CalculateDecision(SyncPathSyncContext context, SyncMode syncMode)
+        {
+            return decisions.TryGetValue(context.Path, out var decision)
+                ? decision
+                : SyncDecision.DoNothing;
         }
 
         public Task<Dictionary<string, SyncDecision>> CalculateDecisionsAsync(IEnumerable<SyncPathSyncContext> contexts, SyncMode syncMode)
@@ -674,6 +836,11 @@ public sealed class SyncEngineRegressionTests
             return SyncItemKinds.IsFileSystem(syncItemKind);
         }
 
+        public bool SupportsCapability(NodeCapabilities capability)
+        {
+            return true;
+        }
+
         public Task<INode> CreateAsync(NodeConfiguration candidate, CancellationToken cancellationToken)
         {
             return Task.FromResult<INode>(node);
@@ -694,17 +861,17 @@ public sealed class SyncEngineRegressionTests
             return Task.CompletedTask;
         }
 
-        public bool SupportsAbsoluteScopedPath(NodeConfiguration configuration)
+        public bool SupportsScopeBoundary(NodeConfiguration configuration, string? scopeBoundary)
         {
-            return false;
+            return true;
         }
 
-        public string ResolveScopedRoot(NodeConfiguration configuration, string? scopedPath)
+        public string ResolveScopeBoundary(NodeConfiguration configuration, string? scopeBoundary)
         {
             return string.Empty;
         }
 
-        public string? GetDisplayRootPath(NodeConfiguration configuration)
+        public string? GetDisplayScopeBoundary(NodeConfiguration configuration)
         {
             return string.Empty;
         }
@@ -782,8 +949,15 @@ public sealed class SyncEngineRegressionTests
 
         public NodeCapabilities Capabilities { get; } = NodeCapabilities.CanRead | NodeCapabilities.CanWrite | NodeCapabilities.CanDelete;
 
-        public IReadOnlySet<string> SupportedSyncItemKinds { get; } =
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { SyncItemKinds.FileSystem };
+        public bool SupportsSyncItemKind(string syncItemKind)
+        {
+            return SyncItemKinds.IsFileSystem(syncItemKind);
+        }
+
+        public bool SupportsCapability(NodeCapabilities capability)
+        {
+            return (Capabilities & capability) == capability;
+        }
 
         public NodeState State { get; private set; } = NodeState.Disconnected;
 
@@ -817,9 +991,9 @@ public sealed class SyncEngineRegressionTests
             return Task.CompletedTask;
         }
 
-        public Task DeleteAsync(string relativePath, CancellationToken cancellationToken)
+        public Task DeleteAsync(string itemIdentity, CancellationToken cancellationToken)
         {
-            DeletedPaths.Add(relativePath);
+            DeletedPaths.Add(itemIdentity);
             return Task.CompletedTask;
         }
     }
@@ -843,6 +1017,8 @@ public sealed class SyncEngineRegressionTests
         public string? TargetPath => null;
 
         public ConflictResolutionStrategy ConflictResolutionStrategy => ConflictResolutionStrategy.Manual;
+
+        public SyncPlanDeletionPolicy DeletionPolicy { get; } = new();
 
         public SyncTaskState State => SyncTaskState.Pending;
 
@@ -1051,6 +1227,8 @@ public sealed class SyncEngineRegressionTests
         public string? TargetPath => null;
 
         public ConflictResolutionStrategy ConflictResolutionStrategy => ConflictResolutionStrategy.Manual;
+
+        public SyncPlanDeletionPolicy DeletionPolicy { get; } = new();
 
         public SyncTaskState State => SyncTaskState.Pending;
 

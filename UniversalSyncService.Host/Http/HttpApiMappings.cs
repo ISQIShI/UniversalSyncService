@@ -186,7 +186,8 @@ public static class HttpApiMappings
                 createRequest.MasterNodeId!,
                 createRequest.SyncItemType!,
                 createRequest.Slaves!,
-                createRequest.Schedule!);
+                createRequest.Schedule!,
+                createRequest.DeletionPolicy);
 
             if (!createRequest.IsEnabled)
             {
@@ -275,7 +276,8 @@ public static class HttpApiMappings
                 updateRequest.SyncItemType!,
                 updateRequest.Slaves!,
                 updateRequest.Schedule!,
-                updateRequest.IsEnabled);
+                updateRequest.IsEnabled,
+                updateRequest.DeletionPolicy);
 
             return Results.Ok(MapPlanDetail(updatedPlan));
         });
@@ -348,6 +350,7 @@ public static class HttpApiMappings
             plan.Schedule.CronExpression,
             plan.Schedule.Interval?.TotalSeconds,
             plan.Schedule.EnableFileSystemWatcher,
+            MapDeletionPolicy(plan.DeletionPolicy),
             plan.SlaveConfigurations.Select(slave => new PlanSlaveResponse(
                 slave.SlaveNodeId,
                 slave.SyncMode.ToString(),
@@ -368,18 +371,18 @@ public static class HttpApiMappings
             node.NodeType,
             node.IsEnabled,
             isImplicitHostNode,
-            TryGetDisplayRootPath(node, nodeProviderRegistry),
+            TryGetDisplayScopeBoundary(node, nodeProviderRegistry),
             isImplicitHostNode ? "宿主节点" : "已配置节点");
     }
 
     private static NodeDetailResponse MapNodeDetail(NodeConfiguration node, NodeProviderRegistry nodeProviderRegistry)
     {
         var isImplicitHostNode = IsImplicitHostNode(node);
-        var displayRootPath = TryGetDisplayRootPath(node, nodeProviderRegistry);
+        var displayScopeBoundary = TryGetDisplayScopeBoundary(node, nodeProviderRegistry);
         var displayConnectionSettings = new Dictionary<string, string>(node.ConnectionSettings, StringComparer.OrdinalIgnoreCase);
-        if (!string.IsNullOrWhiteSpace(displayRootPath))
+        if (!string.IsNullOrWhiteSpace(displayScopeBoundary))
         {
-            displayConnectionSettings["RootPath"] = displayRootPath;
+            displayConnectionSettings["RootPath"] = displayScopeBoundary;
         }
 
         return new NodeDetailResponse(
@@ -388,7 +391,7 @@ public static class HttpApiMappings
             node.NodeType,
             node.IsEnabled,
             isImplicitHostNode,
-            displayRootPath,
+            displayScopeBoundary,
             isImplicitHostNode ? "宿主节点" : "已配置节点",
             displayConnectionSettings,
             (node.CustomOptions ?? new Dictionary<string, object>())
@@ -405,7 +408,7 @@ public static class HttpApiMappings
         return string.Equals(node.Id, SyncFrameworkOptions.DefaultHostNodeId, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string? TryGetDisplayRootPath(NodeConfiguration node, NodeProviderRegistry nodeProviderRegistry)
+    private static string? TryGetDisplayScopeBoundary(NodeConfiguration node, NodeProviderRegistry nodeProviderRegistry)
     {
         node.ConnectionSettings.TryGetValue("RootPath", out var rootPath);
         if (rootPath is null)
@@ -415,7 +418,7 @@ public static class HttpApiMappings
 
         try
         {
-            return nodeProviderRegistry.GetDisplayRootPath(node);
+            return nodeProviderRegistry.GetDisplayScopeBoundary(node);
         }
         catch
         {
@@ -607,6 +610,12 @@ public static class HttpApiMappings
             EnableFileSystemWatcher = request.EnableFileSystemWatcher
         };
 
+        var normalizedDeletionPolicy = NormalizeDeletionPolicyRequest(request.DeletionPolicy);
+        if (normalizedDeletionPolicy.Error is not null)
+        {
+            return new NormalizedPlanRequest(Error: normalizedDeletionPolicy.Error);
+        }
+
         return new NormalizedPlanRequest(
             request.Name.Trim(),
             NormalizeOptionalText(request.Description),
@@ -615,7 +624,57 @@ public static class HttpApiMappings
             request.IsEnabled,
             schedule,
             slaves,
+            normalizedDeletionPolicy.Policy,
             Error: null);
+    }
+
+    private static PlanDeletionPolicyResponse MapDeletionPolicy(SyncPlanDeletionPolicy policy)
+    {
+        return new PlanDeletionPolicyResponse(
+            policy.DeleteThreshold,
+            policy.PercentThreshold,
+            policy.FailSafeMode.ToString(),
+            policy.AllowThresholdBreachForCurrentRun,
+            policy.ThresholdOverrideReason);
+    }
+
+    private static NormalizedDeletionPolicy NormalizeDeletionPolicyRequest(PlanDeletionPolicyRequest? request)
+    {
+        if (request is null)
+        {
+            return new NormalizedDeletionPolicy(null, null);
+        }
+
+        if (!Enum.TryParse<SyncPlanFailSafeMode>(request.FailSafeMode, ignoreCase: true, out var failSafeMode))
+        {
+            return new NormalizedDeletionPolicy(null, $"无法识别的删除 fail-safe 模式：{request.FailSafeMode}");
+        }
+
+        if (request.DeleteThreshold <= 0)
+        {
+            return new NormalizedDeletionPolicy(null, "删除阈值必须大于 0。");
+        }
+
+        if (request.PercentThreshold <= 0 || request.PercentThreshold > 100)
+        {
+            return new NormalizedDeletionPolicy(null, "删除百分比阈值必须在 (0, 100] 区间。");
+        }
+
+        if (request.AllowThresholdBreachForCurrentRun && string.IsNullOrWhiteSpace(request.ThresholdOverrideReason))
+        {
+            return new NormalizedDeletionPolicy(null, "启用本轮阈值越权时必须提供审核原因。");
+        }
+
+        var policy = new SyncPlanDeletionPolicy
+        {
+            DeleteThreshold = request.DeleteThreshold,
+            PercentThreshold = request.PercentThreshold,
+            FailSafeMode = failSafeMode,
+            AllowThresholdBreachForCurrentRun = request.AllowThresholdBreachForCurrentRun,
+            ThresholdOverrideReason = NormalizeOptionalText(request.ThresholdOverrideReason)
+        };
+
+        return new NormalizedDeletionPolicy(policy, null);
     }
 
     private static string NormalizeMasterNodeId(string? masterNodeId)
@@ -732,7 +791,15 @@ public static class HttpApiMappings
         string? CronExpression,
         double? IntervalSeconds,
         bool EnableFileSystemWatcher,
+        PlanDeletionPolicyResponse DeletionPolicy,
         IReadOnlyList<PlanSlaveResponse> Slaves);
+
+    public sealed record PlanDeletionPolicyResponse(
+        int DeleteThreshold,
+        double PercentThreshold,
+        string FailSafeMode,
+        bool AllowThresholdBreachForCurrentRun,
+        string? ThresholdOverrideReason);
 
     public sealed record PlanSlaveResponse(
         string SlaveNodeId,
@@ -754,7 +821,15 @@ public static class HttpApiMappings
         string? CronExpression,
         double? IntervalSeconds,
         bool EnableFileSystemWatcher,
-        List<PlanSlaveRequest> Slaves);
+        List<PlanSlaveRequest> Slaves,
+        PlanDeletionPolicyRequest? DeletionPolicy = null);
+
+    public sealed record PlanDeletionPolicyRequest(
+        int DeleteThreshold = SyncPlanDeletionPolicy.DefaultDeleteThreshold,
+        double PercentThreshold = SyncPlanDeletionPolicy.DefaultPercentThreshold,
+        string FailSafeMode = "Block",
+        bool AllowThresholdBreachForCurrentRun = false,
+        string? ThresholdOverrideReason = null);
 
     public sealed record PlanSlaveRequest(
         string SlaveNodeId,
@@ -774,7 +849,12 @@ public static class HttpApiMappings
         bool IsEnabled = true,
         SyncSchedule? Schedule = null,
         List<SyncPlanSlaveConfiguration>? Slaves = null,
+        SyncPlanDeletionPolicy? DeletionPolicy = null,
         string? Error = null);
+
+    private sealed record NormalizedDeletionPolicy(
+        SyncPlanDeletionPolicy? Policy,
+        string? Error);
 
     private sealed record NormalizedNodeRequest(
         string? Id = null,

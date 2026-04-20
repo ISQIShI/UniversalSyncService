@@ -6,6 +6,7 @@
 
 - {{readme.features.syncPlans}}
 - {{readme.features.nodeProviders}}
+- {{readme.features.lifecycle}}
 - {{readme.features.webConsole}}
 
 ## {{readme.setup.title}}

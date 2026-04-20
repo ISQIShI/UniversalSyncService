@@ -1,6 +1,3 @@
-using UniversalSyncService.Abstractions.SyncItems;
-using UniversalSyncService.Abstractions.SyncManagement.Tasks;
-
 namespace UniversalSyncService.Abstractions.SyncManagement.History;
 
 /// <summary>

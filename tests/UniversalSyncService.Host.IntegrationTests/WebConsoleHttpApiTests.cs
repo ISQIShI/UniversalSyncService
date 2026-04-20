@@ -93,7 +93,13 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
                 enableDeletionProtection: true,
                 conflictResolutionStrategy: null,
                 filters: ["*.md"],
-                exclusions: [".git/"]));
+                exclusions: [".git/"]),
+            deletionPolicy: new PlanDeletionPolicyRequest(
+                DeleteThreshold: 60,
+                PercentThreshold: 12,
+                FailSafeMode: "Block",
+                AllowThresholdBreachForCurrentRun: false,
+                ThresholdOverrideReason: null));
 
         var createResponse = await client.PostAsJsonAsync(PlansApiRoute, request);
         createResponse.EnsureSuccessStatusCode();
@@ -103,6 +109,9 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
         Assert.Equal("新增计划", createdPlan.Name);
         Assert.Single(createdPlan.Slaves);
         Assert.Contains("*.md", createdPlan.Slaves[0].Filters);
+        Assert.Equal(60, createdPlan.DeletionPolicy.DeleteThreshold);
+        Assert.Equal(12, createdPlan.DeletionPolicy.PercentThreshold);
+        Assert.Equal("Block", createdPlan.DeletionPolicy.FailSafeMode);
 
         var plans = await client.GetFromJsonAsync<List<PlanSummaryResponse>>(PlansApiRoute);
         Assert.NotNull(plans);
@@ -132,7 +141,13 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
                 enableDeletionProtection: false,
                 conflictResolutionStrategy: "KeepNewer",
                 filters: ["*.txt", "*.md"],
-                exclusions: ["bin/", "obj/"]));
+                exclusions: ["bin/", "obj/"]),
+            deletionPolicy: new PlanDeletionPolicyRequest(
+                DeleteThreshold: 20,
+                PercentThreshold: 5,
+                FailSafeMode: "Confirm",
+                AllowThresholdBreachForCurrentRun: false,
+                ThresholdOverrideReason: null));
 
         var updateResponse = await client.PutAsJsonAsync($"{PlansApiRoute}/local-filesystem-test", request);
         updateResponse.EnsureSuccessStatusCode();
@@ -146,6 +161,9 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
         Assert.Equal("Push", updatedPlan.Slaves[0].SyncMode);
         Assert.Equal("KeepNewer", updatedPlan.Slaves[0].ConflictResolutionStrategy);
         Assert.Contains("obj/", updatedPlan.Slaves[0].Exclusions);
+        Assert.Equal(20, updatedPlan.DeletionPolicy.DeleteThreshold);
+        Assert.Equal(5, updatedPlan.DeletionPolicy.PercentThreshold);
+        Assert.Equal("Confirm", updatedPlan.DeletionPolicy.FailSafeMode);
     }
 
     [Fact]
@@ -339,7 +357,8 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
         bool isEnabled,
         string triggerType,
         double? intervalSeconds,
-        PlanSlaveRequest slave)
+        PlanSlaveRequest slave,
+        PlanDeletionPolicyRequest? deletionPolicy = null)
     {
         return new CreateOrUpdatePlanRequest(
             Name: name,
@@ -351,7 +370,8 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
             CronExpression: null,
             IntervalSeconds: intervalSeconds,
             EnableFileSystemWatcher: false,
-            Slaves: [slave]);
+            Slaves: [slave],
+            DeletionPolicy: deletionPolicy);
     }
 
     private static PlanSlaveRequest CreatePlanSlaveRequest(
@@ -476,7 +496,15 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
         string? CronExpression,
         double? IntervalSeconds,
         bool EnableFileSystemWatcher,
+        PlanDeletionPolicyResponse DeletionPolicy,
         IReadOnlyList<PlanSlaveResponse> Slaves);
+
+    private sealed record PlanDeletionPolicyResponse(
+        int DeleteThreshold,
+        double PercentThreshold,
+        string FailSafeMode,
+        bool AllowThresholdBreachForCurrentRun,
+        string? ThresholdOverrideReason);
 
     private sealed record PlanSlaveResponse(
         string SlaveNodeId,
@@ -498,7 +526,15 @@ public sealed class WebConsoleHttpApiTests : IAsyncLifetime
         string? CronExpression,
         double? IntervalSeconds,
         bool EnableFileSystemWatcher,
-        IReadOnlyList<PlanSlaveRequest> Slaves);
+        IReadOnlyList<PlanSlaveRequest> Slaves,
+        PlanDeletionPolicyRequest? DeletionPolicy = null);
+
+    private sealed record PlanDeletionPolicyRequest(
+        int DeleteThreshold,
+        double PercentThreshold,
+        string FailSafeMode,
+        bool AllowThresholdBreachForCurrentRun,
+        string? ThresholdOverrideReason);
 
     private sealed record PlanSlaveRequest(
         string SlaveNodeId,

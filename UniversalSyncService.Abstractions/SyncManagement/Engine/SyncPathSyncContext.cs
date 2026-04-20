@@ -14,13 +14,15 @@ public sealed class SyncPathSyncContext
         SyncItemMetadata? masterMetadata,
         SyncItemMetadata? slaveMetadata,
         SyncHistoryEntry? masterHistoryEntry,
-        SyncHistoryEntry? slaveHistoryEntry)
+        SyncHistoryEntry? slaveHistoryEntry,
+        bool isExplicitDeleteCandidate = false)
     {
         Path = path;
         MasterMetadata = masterMetadata;
         SlaveMetadata = slaveMetadata;
         MasterHistoryEntry = masterHistoryEntry;
         SlaveHistoryEntry = slaveHistoryEntry;
+        IsExplicitDeleteCandidate = isExplicitDeleteCandidate;
     }
 
     /// <summary>
@@ -47,4 +49,10 @@ public sealed class SyncPathSyncContext
     /// 获取从节点在上一个成功版本中的历史锚点。
     /// </summary>
     public SyncHistoryEntry? SlaveHistoryEntry { get; }
+
+    /// <summary>
+    /// 获取该路径是否为“显式删除候选”。
+    /// 仅当该标记为 true 时，允许在双方当前扫描都不存在的情况下仍参与本轮决策。
+    /// </summary>
+    public bool IsExplicitDeleteCandidate { get; }
 }

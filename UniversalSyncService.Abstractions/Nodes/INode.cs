@@ -18,9 +18,14 @@ public interface INode
     NodeCapabilities Capabilities { get; }
 
     /// <summary>
-    /// 获取节点支持的同步对象能力类型。
+    /// 判断节点是否支持指定同步对象能力类型。
     /// </summary>
-    IReadOnlySet<string> SupportedSyncItemKinds { get; }
+    bool SupportsSyncItemKind(string syncItemKind);
+
+    /// <summary>
+    /// 判断节点是否支持给定节点能力。
+    /// </summary>
+    bool SupportsCapability(NodeCapabilities capability);
 
     /// <summary>
     /// 获取节点当前状态。
@@ -63,7 +68,7 @@ public interface INode
     /// <summary>
     /// 删除节点上的同步项。
     /// </summary>
-    /// <param name="relativePath">要删除的相对路径。</param>
+    /// <param name="itemIdentity">要删除对象的身份标识。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    Task DeleteAsync(string relativePath, CancellationToken cancellationToken);
+    Task DeleteAsync(string itemIdentity, CancellationToken cancellationToken);
 }

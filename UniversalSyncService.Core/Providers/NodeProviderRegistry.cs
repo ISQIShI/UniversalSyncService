@@ -9,11 +9,17 @@ namespace UniversalSyncService.Core.Providers;
 public sealed class NodeProviderRegistry
 {
     private readonly IReadOnlyList<INodeProvider> _providers;
+    private readonly IReadOnlyDictionary<NodeCapabilities, IReadOnlyList<INodeProvider>> _providersByCapability;
 
     public NodeProviderRegistry(IEnumerable<INodeProvider> providers)
     {
         ArgumentNullException.ThrowIfNull(providers);
         _providers = providers.ToList();
+        _providersByCapability = Enum.GetValues<NodeCapabilities>()
+            .Where(capability => capability != NodeCapabilities.None)
+            .ToDictionary(
+                capability => capability,
+                capability => (IReadOnlyList<INodeProvider>)_providers.Where(provider => provider.SupportsCapability(capability)).ToList());
     }
 
     /// <summary>
@@ -34,6 +40,25 @@ public sealed class NodeProviderRegistry
         ArgumentException.ThrowIfNullOrWhiteSpace(syncItemKind);
 
         return ResolveProvider(configuration).SupportsSyncItemKind(syncItemKind);
+    }
+
+    /// <summary>
+    /// 判断指定节点配置是否支持给定节点能力。
+    /// </summary>
+    public bool SupportsCapability(NodeConfiguration configuration, NodeCapabilities capability)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        return ResolveProvider(configuration).SupportsCapability(capability);
+    }
+
+    /// <summary>
+    /// 获取支持指定能力的 Provider 列表。
+    /// </summary>
+    public IReadOnlyList<INodeProvider> GetProvidersByCapability(NodeCapabilities capability)
+    {
+        return _providersByCapability.TryGetValue(capability, out var providers)
+            ? providers
+            : [];
     }
 
     /// <summary>
@@ -65,22 +90,22 @@ public sealed class NodeProviderRegistry
         return ResolveProvider(configuration).EnsureAuthenticatedAsync(configuration, cancellationToken);
     }
 
-    public bool SupportsAbsoluteScopedPath(NodeConfiguration configuration)
+    public bool SupportsScopeBoundary(NodeConfiguration configuration, string? scopeBoundary)
     {
         ArgumentNullException.ThrowIfNull(configuration);
-        return ResolveProvider(configuration).SupportsAbsoluteScopedPath(configuration);
+        return ResolveProvider(configuration).SupportsScopeBoundary(configuration, scopeBoundary);
     }
 
-    public string ResolveScopedRoot(NodeConfiguration configuration, string? scopedPath)
+    public string ResolveScopeBoundary(NodeConfiguration configuration, string? scopeBoundary)
     {
         ArgumentNullException.ThrowIfNull(configuration);
-        return ResolveProvider(configuration).ResolveScopedRoot(configuration, scopedPath);
+        return ResolveProvider(configuration).ResolveScopeBoundary(configuration, scopeBoundary);
     }
 
-    public string? GetDisplayRootPath(NodeConfiguration configuration)
+    public string? GetDisplayScopeBoundary(NodeConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
-        return ResolveProvider(configuration).GetDisplayRootPath(configuration);
+        return ResolveProvider(configuration).GetDisplayScopeBoundary(configuration);
     }
 
     private INodeProvider ResolveProvider(NodeConfiguration configuration)

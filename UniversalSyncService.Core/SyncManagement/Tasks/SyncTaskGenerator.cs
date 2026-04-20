@@ -1,7 +1,5 @@
 using Microsoft.Extensions.Logging;
 using UniversalSyncService.Abstractions.Configuration;
-using UniversalSyncService.Abstractions.SyncManagement.Engine;
-using UniversalSyncService.Abstractions.SyncManagement.History;
 using UniversalSyncService.Abstractions.SyncManagement.ConfigNodes;
 using UniversalSyncService.Abstractions.SyncManagement.Plans;
 using UniversalSyncService.Abstractions.SyncManagement.Tasks;
@@ -63,9 +61,17 @@ public sealed class SyncTaskGenerator : ISyncTaskGenerator
                 slaveConfiguration.SourcePath,
                 slaveConfiguration.TargetPath,
                 slaveConfiguration.ConflictResolutionStrategy,
+                plan.DeletionPolicy,
                 executionRequirement,
                 _syncTaskRunnerRegistry.ExecuteAsync,
                 _loggerFactory.CreateLogger<SyncTask>()));
+        }
+
+        if (plan.DeletionPolicy.AllowThresholdBreachForCurrentRun)
+        {
+            // 该标记是一次性审批信号，生成任务后立即消费，避免后续调度重复继承越权状态。
+            plan.DeletionPolicy.AllowThresholdBreachForCurrentRun = false;
+            plan.DeletionPolicy.ThresholdOverrideReason = null;
         }
 
         return tasks;
@@ -93,6 +99,22 @@ public sealed class SyncTaskGenerator : ISyncTaskGenerator
             errors.Add("至少需要一个从节点配置。");
         }
 
+        if (plan.DeletionPolicy.DeleteThreshold <= 0)
+        {
+            errors.Add("删除阈值必须大于 0。");
+        }
+
+        if (plan.DeletionPolicy.PercentThreshold <= 0 || plan.DeletionPolicy.PercentThreshold > 100)
+        {
+            errors.Add("删除百分比阈值必须在 (0, 100] 区间。");
+        }
+
+        if (plan.DeletionPolicy.AllowThresholdBreachForCurrentRun
+            && string.IsNullOrWhiteSpace(plan.DeletionPolicy.ThresholdOverrideReason))
+        {
+            errors.Add("启用本轮阈值越权时必须提供审核原因。");
+        }
+
         var duplicatedSlaveIds = plan.SlaveConfigurations
             .GroupBy(item => item.SlaveNodeId, StringComparer.OrdinalIgnoreCase)
             .Where(group => group.Count() > 1)
@@ -105,20 +127,18 @@ public sealed class SyncTaskGenerator : ISyncTaskGenerator
 
         foreach (var slaveConfiguration in plan.SlaveConfigurations)
         {
-            if (IsAbsoluteScopedPath(slaveConfiguration.TargetPath)
-                && (!_nodeRegistry.TryGet(resolvedMasterNodeId, out var resolvedMasterNode)
-                    || resolvedMasterNode is null
-                    || !_nodeProviderRegistry.SupportsAbsoluteScopedPath(resolvedMasterNode)))
+            if (!_nodeRegistry.TryGet(resolvedMasterNodeId, out var resolvedMasterNode)
+                || resolvedMasterNode is null
+                || !_nodeProviderRegistry.SupportsScopeBoundary(resolvedMasterNode, slaveConfiguration.TargetPath))
             {
-                errors.Add($"主节点路径 {slaveConfiguration.TargetPath} 为绝对路径时，仅允许用于本地节点（Local/host-local）。");
+                errors.Add($"主节点作用域 {slaveConfiguration.TargetPath ?? "<root>"} 不受当前 Provider 支持。请调整为该 Provider 可接受的作用域边界。");
             }
 
-            if (IsAbsoluteScopedPath(slaveConfiguration.SourcePath)
-                && (!_nodeRegistry.TryGet(slaveConfiguration.SlaveNodeId, out var resolvedSlaveNode)
-                    || resolvedSlaveNode is null
-                    || !_nodeProviderRegistry.SupportsAbsoluteScopedPath(resolvedSlaveNode)))
+            if (!_nodeRegistry.TryGet(slaveConfiguration.SlaveNodeId, out var resolvedSlaveNode)
+                || resolvedSlaveNode is null
+                || !_nodeProviderRegistry.SupportsScopeBoundary(resolvedSlaveNode, slaveConfiguration.SourcePath))
             {
-                errors.Add($"从节点路径 {slaveConfiguration.SourcePath} 为绝对路径时，仅允许用于本地节点（Local/host-local）。");
+                errors.Add($"从节点作用域 {slaveConfiguration.SourcePath ?? "<root>"} 不受当前 Provider 支持。请调整为该 Provider 可接受的作用域边界。");
             }
 
             if (string.Equals(resolvedMasterNodeId, slaveConfiguration.SlaveNodeId, StringComparison.OrdinalIgnoreCase))
@@ -142,11 +162,6 @@ public sealed class SyncTaskGenerator : ISyncTaskGenerator
         SyncPlanSlaveConfiguration slaveConfiguration)
     {
         return _syncTaskRunnerRegistry.GetExecutionRequirement(plan.SyncItemType, masterNode, slaveNode, slaveConfiguration);
-    }
-
-    private static bool IsAbsoluteScopedPath(string? path)
-    {
-        return !string.IsNullOrWhiteSpace(path) && Path.IsPathRooted(path);
     }
 
     private static string ResolveMasterNodeId(SyncPlan plan)

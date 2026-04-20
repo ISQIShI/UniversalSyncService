@@ -1,4 +1,3 @@
-using UniversalSyncService.Abstractions.SyncItems;
 using UniversalSyncService.Abstractions.SyncManagement.ConfigNodes;
 using UniversalSyncService.Abstractions.SyncManagement.Engine;
 using UniversalSyncService.Abstractions.SyncManagement.Plans;
@@ -55,6 +54,11 @@ public interface ISyncTask
     /// 获取任务的冲突解决策略。
     /// </summary>
     ConflictResolutionStrategy ConflictResolutionStrategy { get; }
+
+    /// <summary>
+    /// 获取任务对应计划的删除守卫策略快照。
+    /// </summary>
+    SyncPlanDeletionPolicy DeletionPolicy { get; }
 
     /// <summary>
     /// 获取任务的当前状态。

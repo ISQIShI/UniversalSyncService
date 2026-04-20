@@ -63,7 +63,8 @@ public sealed class SyncPlanManager : ISyncPlanManager
         string masterNodeId,
         string syncItemType,
         IEnumerable<SyncPlanSlaveConfiguration> slaveConfigurations,
-        SyncSchedule schedule)
+        SyncSchedule schedule,
+        SyncPlanDeletionPolicy? deletionPolicy = null)
     {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(masterNodeId);
@@ -81,7 +82,8 @@ public sealed class SyncPlanManager : ISyncPlanManager
             resolvedMasterNodeId,
             syncItemType,
             slaveConfigurations.ToList(),
-            schedule)
+            schedule,
+            deletionPolicy: deletionPolicy)
         {
             Description = description
         };
@@ -99,6 +101,7 @@ public sealed class SyncPlanManager : ISyncPlanManager
 
         _plans[plan.Id] = plan;
         await PersistPlansAsync();
+        LogDeletionPolicyInitialized(plan);
         OnPlanCreated?.Invoke(plan);
         return plan;
     }
@@ -122,6 +125,7 @@ public sealed class SyncPlanManager : ISyncPlanManager
 
         _plans[planId] = candidatePlan;
         await PersistPlansAsync();
+        LogDeletionPolicyChanged(currentPlan, candidatePlan);
         OnPlanUpdated?.Invoke(candidatePlan);
         return candidatePlan;
     }
@@ -134,7 +138,8 @@ public sealed class SyncPlanManager : ISyncPlanManager
         string syncItemType,
         IEnumerable<SyncPlanSlaveConfiguration> slaveConfigurations,
         SyncSchedule schedule,
-        bool isEnabled)
+        bool isEnabled,
+        SyncPlanDeletionPolicy? deletionPolicy = null)
     {
         ArgumentNullException.ThrowIfNull(planId);
         ArgumentNullException.ThrowIfNull(name);
@@ -154,7 +159,8 @@ public sealed class SyncPlanManager : ISyncPlanManager
             syncItemType,
             slaveConfigurations.ToList(),
             schedule,
-            currentPlan.CreatedAt)
+            currentPlan.CreatedAt,
+            deletionPolicy ?? currentPlan.DeletionPolicy)
         {
             Description = description,
             IsEnabled = isEnabled,
@@ -180,6 +186,7 @@ public sealed class SyncPlanManager : ISyncPlanManager
 
         _plans[planId] = candidatePlan;
         await PersistPlansAsync();
+        LogDeletionPolicyChanged(currentPlan, candidatePlan);
         OnPlanUpdated?.Invoke(candidatePlan);
         return candidatePlan;
     }
@@ -307,7 +314,8 @@ public sealed class SyncPlanManager : ISyncPlanManager
                     plan.SyncItemType,
                     plan.SlaveConfigurations,
                     plan.Schedule,
-                    plan.CreatedAt)
+                    plan.CreatedAt,
+                    plan.DeletionPolicy)
                 {
                     Description = plan.Description,
                     IsEnabled = plan.IsEnabled,
@@ -361,5 +369,40 @@ public sealed class SyncPlanManager : ISyncPlanManager
         return File.Exists(configurationFilePath)
             ? File.GetLastWriteTimeUtc(configurationFilePath)
             : DateTimeOffset.MinValue;
+    }
+
+    private void LogDeletionPolicyInitialized(SyncPlan plan)
+    {
+        _logger.LogInformation(
+            "[AUDIT] 初始化计划删除守卫策略。计划={PlanId} 删除阈值={DeleteThreshold} 百分比阈值={PercentThreshold}% fail-safe={FailSafeMode}",
+            plan.Id,
+            plan.DeletionPolicy.DeleteThreshold,
+            plan.DeletionPolicy.PercentThreshold,
+            plan.DeletionPolicy.FailSafeMode);
+    }
+
+    private void LogDeletionPolicyChanged(SyncPlan previous, SyncPlan current)
+    {
+        if (previous.DeletionPolicy.DeleteThreshold == current.DeletionPolicy.DeleteThreshold
+            && Math.Abs(previous.DeletionPolicy.PercentThreshold - current.DeletionPolicy.PercentThreshold) < 0.0001d
+            && previous.DeletionPolicy.FailSafeMode == current.DeletionPolicy.FailSafeMode
+            && previous.DeletionPolicy.AllowThresholdBreachForCurrentRun == current.DeletionPolicy.AllowThresholdBreachForCurrentRun
+            && string.Equals(previous.DeletionPolicy.ThresholdOverrideReason, current.DeletionPolicy.ThresholdOverrideReason, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _logger.LogWarning(
+            "[AUDIT] 计划删除守卫策略变更。计划={PlanId} 删除阈值: {OldDeleteThreshold}->{NewDeleteThreshold} 百分比阈值: {OldPercentThreshold}%->{NewPercentThreshold}% fail-safe: {OldMode}->{NewMode} 本轮越权: {OldOverride}->{NewOverride} 原因: {Reason}",
+            current.Id,
+            previous.DeletionPolicy.DeleteThreshold,
+            current.DeletionPolicy.DeleteThreshold,
+            previous.DeletionPolicy.PercentThreshold,
+            current.DeletionPolicy.PercentThreshold,
+            previous.DeletionPolicy.FailSafeMode,
+            current.DeletionPolicy.FailSafeMode,
+            previous.DeletionPolicy.AllowThresholdBreachForCurrentRun,
+            current.DeletionPolicy.AllowThresholdBreachForCurrentRun,
+            current.DeletionPolicy.ThresholdOverrideReason ?? "<none>");
     }
 }

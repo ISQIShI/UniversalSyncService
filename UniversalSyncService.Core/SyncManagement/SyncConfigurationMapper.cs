@@ -60,7 +60,8 @@ internal static class SyncConfigurationMapper
             source.SyncItemType,
             source.SlaveConfigurations.Select(ToSlaveConfiguration).ToList(),
             ToSchedule(source.Schedule),
-            source.CreatedAt)
+            source.CreatedAt,
+            ToDeletionPolicy(source.DeletionPolicy))
         {
             Description = source.Description,
             IsEnabled = source.IsEnabled,
@@ -89,7 +90,41 @@ internal static class SyncConfigurationMapper
             CreatedAt = source.CreatedAt,
             ModifiedAt = source.ModifiedAt,
             LastExecutedAt = source.LastExecutedAt,
-            ExecutionCount = source.ExecutionCount
+            ExecutionCount = source.ExecutionCount,
+            DeletionPolicy = ToDeletionPolicyOptions(source.DeletionPolicy)
+        };
+    }
+
+    private static SyncPlanDeletionPolicy ToDeletionPolicy(SyncPlanDeletionPolicyOptions? source)
+    {
+        var options = source ?? new SyncPlanDeletionPolicyOptions();
+        var normalizedDeleteThreshold = Math.Max(1, options.DeleteThreshold);
+        var normalizedPercentThreshold = Math.Clamp(options.PercentThreshold, 0.1d, 100d);
+        var failSafeMode = Enum.TryParse<SyncPlanFailSafeMode>(options.FailSafeMode, ignoreCase: true, out var parsedMode)
+            ? parsedMode
+            : SyncPlanFailSafeMode.Block;
+
+        return new SyncPlanDeletionPolicy
+        {
+            DeleteThreshold = normalizedDeleteThreshold,
+            PercentThreshold = normalizedPercentThreshold,
+            FailSafeMode = failSafeMode,
+            AllowThresholdBreachForCurrentRun = options.AllowThresholdBreachForCurrentRun,
+            ThresholdOverrideReason = string.IsNullOrWhiteSpace(options.ThresholdOverrideReason)
+                ? null
+                : options.ThresholdOverrideReason.Trim()
+        };
+    }
+
+    private static SyncPlanDeletionPolicyOptions ToDeletionPolicyOptions(SyncPlanDeletionPolicy source)
+    {
+        return new SyncPlanDeletionPolicyOptions
+        {
+            DeleteThreshold = source.DeleteThreshold,
+            PercentThreshold = source.PercentThreshold,
+            FailSafeMode = source.FailSafeMode.ToString(),
+            AllowThresholdBreachForCurrentRun = source.AllowThresholdBreachForCurrentRun,
+            ThresholdOverrideReason = source.ThresholdOverrideReason
         };
     }
 

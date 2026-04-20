@@ -31,6 +31,12 @@ public sealed class LocalNodeProvider : INodeProvider
         return SyncItemKinds.IsFileSystem(syncItemKind);
     }
 
+    public bool SupportsCapability(NodeCapabilities capability)
+    {
+        var capabilities = NodeCapabilities.CanRead | NodeCapabilities.CanWrite | NodeCapabilities.CanDelete | NodeCapabilities.CanStream;
+        return (capabilities & capability) == capability;
+    }
+
     public Task<INode> CreateAsync(NodeConfiguration configuration, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -91,12 +97,12 @@ public sealed class LocalNodeProvider : INodeProvider
         return Task.CompletedTask;
     }
 
-    public bool SupportsAbsoluteScopedPath(NodeConfiguration configuration)
+    public bool SupportsScopeBoundary(NodeConfiguration configuration, string? scopeBoundary)
     {
         return CanCreate(configuration);
     }
 
-    public string ResolveScopedRoot(NodeConfiguration configuration, string? scopedPath)
+    public string ResolveScopeBoundary(NodeConfiguration configuration, string? scopeBoundary)
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
@@ -106,20 +112,20 @@ public sealed class LocalNodeProvider : INodeProvider
         }
 
         var normalizedRootPath = Path.GetFullPath(rootPath);
-        if (string.IsNullOrWhiteSpace(scopedPath))
+        if (string.IsNullOrWhiteSpace(scopeBoundary))
         {
             return normalizedRootPath;
         }
 
-        if (Path.IsPathRooted(scopedPath))
+        if (Path.IsPathRooted(scopeBoundary))
         {
-            return Path.GetFullPath(scopedPath);
+            return Path.GetFullPath(scopeBoundary);
         }
 
-        return Path.GetFullPath(Path.Combine(normalizedRootPath, scopedPath));
+        return Path.GetFullPath(Path.Combine(normalizedRootPath, scopeBoundary));
     }
 
-    public string? GetDisplayRootPath(NodeConfiguration configuration)
+    public string? GetDisplayScopeBoundary(NodeConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
 

@@ -43,6 +43,11 @@ public sealed class SyncPlan
     public SyncSchedule Schedule { get; }
 
     /// <summary>
+    /// 获取计划级删除守卫策略。
+    /// </summary>
+    public SyncPlanDeletionPolicy DeletionPolicy { get; }
+
+    /// <summary>
     /// 获取或设置计划是否已启用。
     /// </summary>
     public bool IsEnabled { get; set; }
@@ -77,7 +82,8 @@ public sealed class SyncPlan
         string syncItemType,
         List<SyncPlanSlaveConfiguration> slaveConfigurations,
         SyncSchedule schedule,
-        DateTimeOffset? createdAt = null)
+        DateTimeOffset? createdAt = null,
+        SyncPlanDeletionPolicy? deletionPolicy = null)
     {
         var actualCreatedAt = createdAt ?? DateTimeOffset.Now;
 
@@ -87,6 +93,7 @@ public sealed class SyncPlan
         SyncItemType = syncItemType;
         SlaveConfigurations = slaveConfigurations;
         Schedule = schedule;
+        DeletionPolicy = deletionPolicy?.Clone() ?? new SyncPlanDeletionPolicy();
         CreatedAt = actualCreatedAt;
         ModifiedAt = actualCreatedAt;
         IsEnabled = true;

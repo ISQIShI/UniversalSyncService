@@ -16,6 +16,11 @@ public interface ISyncItem
     SyncItemMetadata Metadata { get; }
 
     /// <summary>
+    /// 获取同步项对象身份标识。
+    /// </summary>
+    string Identity { get; }
+
+    /// <summary>
     /// 获取同步项的类型。
     /// </summary>
     SyncItemType ItemType { get; }
@@ -48,6 +53,11 @@ public interface ISyncItem
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>校验和字符串。</returns>
     Task<string?> GetChecksumAsync(string algorithm, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 判断同步项是否支持给定能力。
+    /// </summary>
+    bool SupportsCapability(SyncItemCapabilities capability);
 
     /// <summary>
     /// 获取扩展元数据。

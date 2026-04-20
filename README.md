@@ -7,7 +7,8 @@ A headless file synchronization service with plugin-based node providers and Web
 ## Features
 
 - Create, edit, and execute synchronization plans
-- Support Local Filesystem and OneDrive node providers
+- Support Local Filesystem and OneDrive node providers (capability-driven)
+- Robust sync lifecycle with Tombstone support and deletion policy guards
 - Manage service status, plans, nodes, and system configuration in Web UI
 
 ## Setup

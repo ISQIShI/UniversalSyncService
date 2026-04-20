@@ -37,7 +37,8 @@ public interface ISyncPlanManager
         string masterNodeId,
         string syncItemType,
         IEnumerable<SyncPlanSlaveConfiguration> slaveConfigurations,
-        SyncSchedule schedule);
+        SyncSchedule schedule,
+        SyncPlanDeletionPolicy? deletionPolicy = null);
 
     /// <summary>
     /// 更新同步计划。
@@ -68,7 +69,8 @@ public interface ISyncPlanManager
         string syncItemType,
         IEnumerable<SyncPlanSlaveConfiguration> slaveConfigurations,
         SyncSchedule schedule,
-        bool isEnabled);
+        bool isEnabled,
+        SyncPlanDeletionPolicy? deletionPolicy = null);
 
     /// <summary>
     /// 删除同步计划。
